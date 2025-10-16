@@ -1,0 +1,29 @@
+fileFormatVersion: 2
+guid: e3731c0d2f0b4fd4d9a81335824cf5f9
+AudioImporter:
+  externalObjects: {}
+  serializedVersion: 6
+  defaultSettings:
+    loadType: 0
+    sampleRateSetting: 0
+    sampleRateOverride: 44100
+    compressionFormat: 1
+    quality: 1
+    conversionMode: 0
+  platformSettingOverrides: {}
+  forceToMono: 0
+  normalize: 1
+  preloadAudioData: 1
+  loadInBackground: 0
+  ambisonic: 0
+  3D: 1
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 184029
+  packageName: Sci-Fi SFX Package
+  packageVersion: 1.0
+  assetPath: Assets/Sci-Fi SFX/Combatants/Tank/Loops_Character_Heartbeat_3.wav
+  uploadId: 403572
