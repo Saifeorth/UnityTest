@@ -201,11 +201,11 @@ public class WaypointPlacer : MonoBehaviour
 
     private void HandleClear()
     {
-        if (Input.GetMouseButtonDown(2))
-        {
-            selectedShip?.ClearWaypoints();
-            ClearMarkers();
-        }
+        //if (Input.GetMouseButtonDown(2))
+        //{
+        //    selectedShip?.ClearWaypoints();
+        //    ClearMarkers();
+        //}
     }
 
     // ================================
