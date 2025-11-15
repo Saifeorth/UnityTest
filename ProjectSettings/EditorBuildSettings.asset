@@ -6,8 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/MilkyWay/Scenes/ThirdPersonMovement.unity
-    guid: c6600db81a48ed94fa536744b4c73bca
+    path: Assets/MilkyWay/Scenes/ThirdPersonShooting.unity
+    guid: b5fec4e0073cb2d499f3ab156d9a0db9
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0
