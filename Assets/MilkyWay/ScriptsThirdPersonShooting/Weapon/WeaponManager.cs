@@ -3,106 +3,121 @@ using System.Collections;
 
 public class WeaponManager : MonoBehaviour
 {
-    public Weapon[] weapons;
-    public int currentWeaponIndex = 0;
-
-    [Header("UI References")]
-    public WeaponUIButton[] weaponButtons;
-    public AudioClip[] weaponReloadSound;
-
-    public AudioSource audioSource;
-
     public LayerMask aimLayerMask;
-
     private Camera mainCam;
-    private bool isSwitchingOrReloading = false;
-    private Coroutine reloadCoroutine; // prevent multiple coroutines
+
+    public WeaponSubsystem[] weaponSubsystems;
+    public SubsystemController weaponSubsystemController;
+
+    public int totalEnergyFromSubsystem = 0;
+    public int totalAllocatedToWeapons = 0;
+
+    private void OnEnable()
+    {
+        weaponSubsystemController.onEnergyChanged += SetTotalEnergy;
+    }
+
+    private void OnDestroy()
+    {
+        weaponSubsystemController.onEnergyChanged -= SetTotalEnergy;
+    }
 
     void Start()
     {
         mainCam = Camera.main;
-        audioSource = GetComponent<AudioSource>();
-        SelectWeapon(currentWeaponIndex);
+
+        // Initialize UI
+        foreach (var ws in weaponSubsystems)
+            ws.InitializeUI();
     }
 
-    void Update()
+    public void SetTotalEnergy(int newTotalEnergy)
     {
-        HandleWeaponSwitch();
-        HandleFireInput();
+        totalEnergyFromSubsystem = newTotalEnergy;
+        ClampWeaponAllocations();
     }
 
-    void HandleWeaponSwitch()
+    private void ClampWeaponAllocations()
     {
-        for (int i = 0; i < weapons.Length; i++)
+        // Ensure weapon allocations never exceed available energy
+        int sum = 0;
+        foreach (var ws in weaponSubsystems)
+            sum += ws.currentAllocated;
+
+        totalAllocatedToWeapons = sum;
+
+        while (totalAllocatedToWeapons > totalEnergyFromSubsystem)
         {
-            if (Input.GetKeyDown((i + 1).ToString()))
+            // remove from last enabled weapon
+            for (int i = weaponSubsystems.Length - 1; i >= 0; i--)
             {
-                if (currentWeaponIndex != i)
+                if (weaponSubsystems[i].currentAllocated > 0)
                 {
-                    // Cancel any previous coroutine before starting new one
-                    if (reloadCoroutine != null)
-                        StopCoroutine(reloadCoroutine);
-
-                    AudioClip clip = (i < weaponReloadSound.Length) ? weaponReloadSound[i] : null;
-
-                    if (clip != null)
-                        reloadCoroutine = StartCoroutine(PlayReloadSound(clip, i));
-                    else
-                        SelectWeapon(i); // switch instantly if no sound
+                    weaponSubsystems[i].currentAllocated--;
+                    weaponSubsystems[i].UpdateBars();
+                    weaponSubsystems[i].UpdateSubsystemState();
+                    totalAllocatedToWeapons--;
+                    break;
                 }
             }
         }
     }
 
-    void HandleFireInput()
+    void Update()
     {
-        if (isSwitchingOrReloading)
-            return;
+        HandleFiring();
+    }
+
+    void HandleFiring()
+    {
+        if (Input.GetKey(KeyCode.Space)) return; // Disable firing when space is held
 
         if (Input.GetMouseButton(0))
-        {
-            Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
-            Vector3 target = ray.origin + ray.direction * 1000f;
-
-            if (Physics.Raycast(ray, out RaycastHit hit, 2000f, aimLayerMask, QueryTriggerInteraction.Ignore))
-                target = hit.point;
-
-            weapons[currentWeaponIndex].Fire(target);
-        }
+            FireAllEnabledWeapons();
     }
 
-    IEnumerator PlayReloadSound(AudioClip clip, int targetWeaponIndex)
+    void FireAllEnabledWeapons()
     {
-        isSwitchingOrReloading = true;
+        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        Vector3 target = ray.origin + ray.direction * 1000f;
 
-        // Mark all buttons unselected and gray out the target one
-        if (weaponButtons != null && targetWeaponIndex < weaponButtons.Length)
-            weaponButtons[targetWeaponIndex].SetLoading(true);
+        if (Physics.Raycast(ray, out RaycastHit hit, 2000f, aimLayerMask, QueryTriggerInteraction.Ignore))
+            target = hit.point;
 
-        audioSource.PlayOneShot(clip);
-        yield return new WaitForSeconds(clip.length);
+        foreach (var ws in weaponSubsystems)
+        {
+            if (ws.isEnabled)  // fully powered
+            {
+                ws.weapon.Fire(target);
+            }
+        }
+    }
+    public bool TryAllocateEnergy(WeaponSubsystem target)
+    {
+        if (totalAllocatedToWeapons >= totalEnergyFromSubsystem)
+            return false;
 
-        // Select new weapon after reload delay
-        SelectWeapon(targetWeaponIndex);
+        if (target.currentAllocated >= target.weapon.requiredEnergy)
+            return false;
 
-        // Restore button visuals
-        if (weaponButtons != null && targetWeaponIndex < weaponButtons.Length)
-            weaponButtons[targetWeaponIndex].SetLoading(false);
+        target.currentAllocated++;
+        target.UpdateBars();
+        target.UpdateSubsystemState();
 
-        isSwitchingOrReloading = false;
-        reloadCoroutine = null;
+        totalAllocatedToWeapons++;
+        return true;
     }
 
-    public void SelectWeapon(int index)
+    public bool TryDeallocateEnergy(WeaponSubsystem target)
     {
-        if (index < 0 || index >= weapons.Length) return;
+        if (target.currentAllocated <= 0)
+            return false;
 
-        currentWeaponIndex = index;
+        target.currentAllocated--;
+        target.UpdateBars();
+        target.UpdateSubsystemState();
 
-        if (weaponButtons != null)
-        {
-            for (int i = 0; i < weaponButtons.Length; i++)
-                weaponButtons[i].SetSelected(i == index);
-        }
+        totalAllocatedToWeapons--;
+        return true;
     }
 }

@@ -16,6 +16,10 @@ public class ShipMovementThirdPerson : MonoBehaviour
     public float maxAngularSpeed = 0.5f;
     public float rotationDamping = 4f;
 
+    [Header("Energy Subsystems")]
+    public SubsystemController engineSubsystem;     // For forward movement
+    public SubsystemController thrusterSubsystem;
+
     [Header("Vertical Movement Settings")]
     public float verticalThrust = 3f;
     public KeyCode upKey = KeyCode.LeftShift;
@@ -25,7 +29,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
     public float maxLinearSpeed = 10f;
 
     [Header("GUI Settings")]
-    public KeyCode toggleGUIKey = KeyCode.C;
+    public KeyCode toggleGUIKey = KeyCode.Space;
 
     [Header("Thruster Particles (Single)")]
     public ParticleSystem forwardThruster;
@@ -77,9 +81,13 @@ public class ShipMovementThirdPerson : MonoBehaviour
     private void Update()
     {
         // Check for GUI toggle key
-        if (Input.GetKeyDown(toggleGUIKey))
+        if (Input.GetKey(toggleGUIKey))
         {
-            showGUI = !showGUI;
+            showGUI = true;
+        }
+        else 
+        {
+            showGUI = false;
         }
 
         // Manage cursor visibility & locking
@@ -99,6 +107,10 @@ public class ShipMovementThirdPerson : MonoBehaviour
     {
         Vector3 force = Vector3.zero;
 
+         float engineMultiplier = engineSubsystem != null
+        ? engineSubsystem.currentAllocated / (float)engineSubsystem.data.requiredEnergy
+        : 1f;
+
         bool w = Input.GetKey(KeyCode.W);
         bool s = Input.GetKey(KeyCode.S);
         bool q = Input.GetKey(KeyCode.Q);
@@ -106,10 +118,10 @@ public class ShipMovementThirdPerson : MonoBehaviour
         bool up = Input.GetKey(upKey);
         bool down = Input.GetKey(downKey);
 
-        if (w) force += transform.forward * mainThrust;
-        if (s) force -= transform.forward * reverseThrust;
-        if (q) force -= transform.right * strafeThrust;
-        if (e) force += transform.right * strafeThrust;
+        if (w) force += transform.forward * (mainThrust* engineMultiplier);
+        if (s) force -= transform.forward * (reverseThrust * engineMultiplier);
+        if (q) force -= transform.right * (strafeThrust * engineMultiplier);
+        if (e) force += transform.right * (strafeThrust * engineMultiplier);
         if (up)
         {
             force += transform.up * verticalThrust;
@@ -135,10 +147,10 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
         rb.AddForce(force, ForceMode.Acceleration);
 
-        ToggleThruster(forwardThruster, w);
-        ToggleThruster(reverseThruster, s);
-        ToggleThrusters(strafeLeftThrusters, e);
-        ToggleThrusters(strafeRightThrusters, q);
+        ToggleThruster(forwardThruster, w && engineMultiplier>0);
+        ToggleThruster(reverseThruster, s && engineMultiplier > 0);
+        ToggleThrusters(strafeLeftThrusters, e && engineMultiplier > 0);
+        ToggleThrusters(strafeRightThrusters, q && engineMultiplier > 0);
     }
 
     private void HandleRotation()
@@ -152,10 +164,12 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
         currentRotationSpeed = Mathf.MoveTowards(currentRotationSpeed, targetSpeed, rotationAcceleration * Time.fixedDeltaTime);
 
-        rb.angularVelocity = new Vector3(0f, currentRotationSpeed * rotationThrust * Time.fixedDeltaTime, 0f);
+        float turnMultiplier = thrusterSubsystem != null ? thrusterSubsystem.currentAllocated / (float)thrusterSubsystem.data.requiredEnergy: 1f;
 
-        ToggleThrusters(rotateLeftThrusters, d);
-        ToggleThrusters(rotateRightThrusters, a);
+        rb.angularVelocity = new Vector3(0f, currentRotationSpeed * rotationThrust * turnMultiplier * Time.fixedDeltaTime, 0f);
+
+        ToggleThrusters(rotateLeftThrusters, d && turnMultiplier>0f);
+        ToggleThrusters(rotateRightThrusters, a && turnMultiplier>0f);
     }
 
     private void LimitVelocity()
@@ -229,7 +243,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
     {
         InitStyles();
 
-        GUI.Label(new Rect(Screen.width - 240, 20, 220, 40), $"Press {toggleGUIKey} to {(showGUI ? "hide" : "show")} controls", labelStyle);
+        GUI.Label(new Rect(Screen.width - 240, 20, 260, 40), $"{(showGUI ? "Release" : "Hold")} {toggleGUIKey} to {(showGUI ? "hide" : "show")} controls", labelStyle);
 
         if (showGUI)
         {

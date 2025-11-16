@@ -1,29 +1,40 @@
 ﻿using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-public class WeaponUIButton : MonoBehaviour
+public class WeaponUIButton : MonoBehaviour, IPointerClickHandler
 {
-    public int weaponIndex;
     public WeaponManager manager;
+    public WeaponSubsystem subsystem;
 
-    [Header("UI References")]
-    public UnityEngine.UI.Outline highlightImage;
-    public Image loadingOverlay; // ← Assign an Image overlay (e.g. gray, 60% alpha)
+    public AudioSource audioSource;
 
-    public void OnClick()
+    public AudioClip allocateEnergyClip;
+    public AudioClip deallocateEnergyClip;
+
+    private void Start()
     {
-        manager.SelectWeapon(weaponIndex);
+        audioSource = GetComponent<AudioSource>();
     }
 
-    public void SetSelected(bool selected)
-    {
-        if (highlightImage)
-            highlightImage.enabled = selected;
-    }
 
-    public void SetLoading(bool isLoading)
+    public void OnPointerClick(PointerEventData eventData)
     {
-        if (loadingOverlay)
-            loadingOverlay.gameObject.SetActive(isLoading);
+        if (eventData.button == PointerEventData.InputButton.Left)
+        {
+            bool success = manager.TryAllocateEnergy(subsystem);
+            if (success)
+            {
+                audioSource.PlayOneShot(allocateEnergyClip);
+            }
+
+        }
+        else if (eventData.button == PointerEventData.InputButton.Right)
+        {
+            bool success = manager.TryDeallocateEnergy(subsystem);
+            if (success)
+            {
+                audioSource.PlayOneShot(deallocateEnergyClip);
+            }
+        }
     }
 }

@@ -38,6 +38,8 @@ public class ShipAimTargetController : MonoBehaviour
     {
         if (!ship) return;
 
+        if (Input.GetKey(KeyCode.Space)) return;
+
         // Mouse input
         float mouseX = Input.GetAxis("Mouse X");
         float mouseY = Input.GetAxis("Mouse Y");

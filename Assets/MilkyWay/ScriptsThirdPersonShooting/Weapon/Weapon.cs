@@ -10,6 +10,10 @@ public abstract class Weapon : MonoBehaviour
     public float fireRate = 0.5f;
     public float projectileSpeed = 100f;
     public Vector3 projectileRotationOffset;
+    [HideInInspector] public float fireCooldownPercent = 0f;
+
+    [Header("Energy Settings")]
+    public int requiredEnergy = 1;
 
     [Header("References")]
     public GameObject projectilePrefab;
@@ -43,10 +47,29 @@ public abstract class Weapon : MonoBehaviour
         }
     }
 
+    protected virtual void Update()
+    {
+        UpdateFireCooldown();
+    }
+
+    private void UpdateFireCooldown()
+    {
+        if (Time.time >= nextFireTime)
+        {
+            fireCooldownPercent = 1f;     // fully ready
+            return;
+        }
+
+        float timeLeft = nextFireTime - Time.time;
+        fireCooldownPercent = 1f - (timeLeft / fireRate);
+    }
+
     public virtual void Fire(Vector3 targetPosition)
     {
         if (Time.time < nextFireTime) return;
+
         nextFireTime = Time.time + fireRate;
+        fireCooldownPercent = 0f;
 
         if (firePoints == null || firePoints.Length == 0 || projectilePrefab == null)
             return;
