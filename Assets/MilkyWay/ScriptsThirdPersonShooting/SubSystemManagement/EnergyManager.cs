@@ -1,94 +1,107 @@
+using DG.Tweening;
+using DG.Tweening.Core.Easing;
+using System;
 using UnityEngine;
 using UnityEngine.UI;
-using DG.Tweening;
 
 public class EnergyManager : MonoBehaviour
 {
-    [Header("Global Energy Bars")]
+    public static Action onAnyEnergyChanged;
+
+    [Header("Energy")]
     public int totalEnergy = 10;
     private int remainingEnergy;
 
-    public Image[] globalEnergyFills;
+    [Header("UI")]
+    public Image[] globalBars;
 
     [Header("Subsystems")]
     public SubsystemController[] subsystems;
 
-    // Animation values
-    private const float fadeDuration = 0.15f;
-    private const float popScale = 1.12f;
-    private const float popTime = 0.12f;
-
     private void Start()
     {
         remainingEnergy = totalEnergy;
-        InitializeBars();
-        UpdateGlobalBars();
+        RefreshUI();
     }
 
-    private void InitializeBars()
+
+    private void Awake()
     {
-        for (int i = 0; i < globalEnergyFills.Length; i++)
-        {
-            if (globalEnergyFills[i] != null)
-            {
-                globalEnergyFills[i].enabled = false;
-                globalEnergyFills[i].transform.localScale = Vector3.one;
-            }
-        }
+        HeatManager.OnVentingStart += ForceDeallocate;
     }
 
-    public bool TryAllocateEnergy(SubsystemController target)
+    private void OnDestroy()
     {
-        if (remainingEnergy <= 0 || target.currentAllocated >= target.data.requiredEnergy)
-            return false;
+        HeatManager.OnVentingStart -= ForceDeallocate;
+    }
 
-        target.currentAllocated++;
+    public bool TryAllocateEnergy(SubsystemController s)
+    {
+        if (remainingEnergy == 0) return false;
+        if (s.currentAllocated >= s.energyData.requiredEnergy) return false;
+
+        s.currentAllocated++;
         remainingEnergy--;
 
-        UpdateGlobalBars();
-        target.UpdateBars();
-        target.UpdateSubsystemState();
+        s.UpdateBars();
+        s.UpdateState();
+        RefreshUI();
 
+        onAnyEnergyChanged?.Invoke();
         return true;
     }
 
-    public bool TryDeallocateEnergy(SubsystemController target)
+    public bool TryDeallocateEnergy(SubsystemController s)
     {
-        if (target.currentAllocated <= 0)
-            return false;
+        if (s.currentAllocated <= 0) return false;
 
-        target.currentAllocated--;
+        s.currentAllocated--;
         remainingEnergy++;
 
-        UpdateGlobalBars();
-        target.UpdateBars();
-        target.UpdateSubsystemState();
+        s.UpdateBars();
+        s.UpdateState();
+        RefreshUI();
 
+        onAnyEnergyChanged?.Invoke();
         return true;
     }
 
-    private void UpdateGlobalBars()
+    private void RefreshUI()
     {
-        for (int i = 0; i < globalEnergyFills.Length; i++)
+        for (int i = 0; i < globalBars.Length; i++)
         {
-            Image fill = globalEnergyFills[i];
+            Image img = globalBars[i];
 
             if (i < remainingEnergy)
             {
-                // Enable + fade in
-                fill.enabled = true;
-                fill.DOFade(1f, fadeDuration);
-
-                // POP animation
-                fill.transform.localScale = Vector3.one;
-                fill.transform.DOPunchScale(Vector3.one * (popScale - 1f), popTime);
+                img.enabled = true;
+                img.DOFade(1f, 0.15f);
+                img.transform.DOPunchScale(Vector3.one * 0.15f, 0.15f);
             }
             else
             {
-                // Fade out and then disable
-                fill.DOFade(0f, fadeDuration)
-                    .OnComplete(() => fill.enabled = false);
+                img.DOFade(0f, 0.15f)
+                    .OnComplete(() => img.enabled = false);
             }
         }
+    }
+
+    public void ForceDeallocate()
+    {
+        foreach (var subsystem in subsystems)
+        {
+            if (subsystem == null) continue;
+
+            if (subsystem.currentAllocated > 0)
+            {
+                remainingEnergy += subsystem.currentAllocated;
+                subsystem.currentAllocated = 0;
+
+                subsystem.UpdateBars();
+                subsystem.UpdateState();
+            }
+        }
+
+        RefreshUI();
     }
 }

@@ -9,6 +9,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
     public float mainThrust = 3.5f;
     public float strafeThrust = 2f;
     public float reverseThrust = 3.5f;
+    public float linearDamping = 0.1f;
 
     [Header("Rotation Settings")]
     public float rotationThrust = 30f;
@@ -29,7 +30,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
     public float maxLinearSpeed = 10f;
 
     [Header("GUI Settings")]
-    public KeyCode toggleGUIKey = KeyCode.Space;
+    public KeyCode toggleGUIKey = KeyCode.P;
 
     [Header("Thruster Particles (Single)")]
     public ParticleSystem forwardThruster;
@@ -58,7 +59,10 @@ public class ShipMovementThirdPerson : MonoBehaviour
     private Rigidbody rb;
     private float currentRotationSpeed = 0f;
 
-    private bool showGUI = false;
+    public bool showGUI = false;
+    private CinemachineRotationComposer rotComp;
+
+    public HeatManager heatManager; // Reference to HeatManager
 
 
     private void Awake()
@@ -67,6 +71,8 @@ public class ShipMovementThirdPerson : MonoBehaviour
         rb.useGravity = false;
         rb.linearDamping = 0f;
         rb.angularDamping = 0f;
+
+        rotComp = thirdPersonCam.GetComponent<CinemachineRotationComposer>();
     }
 
     private void FixedUpdate()
@@ -81,34 +87,67 @@ public class ShipMovementThirdPerson : MonoBehaviour
     private void Update()
     {
         // Check for GUI toggle key
-        if (Input.GetKey(toggleGUIKey))
+        if (Input.GetKeyDown(toggleGUIKey))
         {
-            showGUI = true;
-        }
-        else 
-        {
-            showGUI = false;
+            showGUI = !showGUI;
+            if (showGUI)
+            {
+                if (rotComp != null && rotComp.enabled)
+                {
+                    rotComp.enabled = false;
+                }
+            }
+            else 
+            {
+                if (rotComp != null && !rotComp.enabled)
+                {
+                    rotComp.enabled = true;
+                }
+            }        
         }
 
+
         // Manage cursor visibility & locking
-        if (showGUI)
+        if (Input.GetKey(KeyCode.Space) || showGUI)
         {
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
+
+            if (rotComp != null && rotComp.enabled)
+            {
+                rotComp.enabled = false;
+            }
         }
         else
         {
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
+
+            if (rotComp != null && !rotComp.enabled)
+            {
+                rotComp.enabled = true;
+            }
         }
     }
 
     private void HandleThrust()
     {
+        if (Input.GetKey(KeyCode.Space) || showGUI)
+        {
+            ToggleThruster(forwardThruster, false);
+            ToggleThruster(reverseThruster, false);
+            ToggleThrusters(strafeLeftThrusters, false);
+            ToggleThrusters(strafeRightThrusters, false);
+            rb.linearDamping = linearDamping;
+            return;
+        }
+           
+
+
         Vector3 force = Vector3.zero;
 
          float engineMultiplier = engineSubsystem != null
-        ? engineSubsystem.currentAllocated / (float)engineSubsystem.data.requiredEnergy
+        ? engineSubsystem.currentAllocated / (float)engineSubsystem.energyData.requiredEnergy
         : 1f;
 
         bool w = Input.GetKey(KeyCode.W);
@@ -151,10 +190,32 @@ public class ShipMovementThirdPerson : MonoBehaviour
         ToggleThruster(reverseThruster, s && engineMultiplier > 0);
         ToggleThrusters(strafeLeftThrusters, e && engineMultiplier > 0);
         ToggleThrusters(strafeRightThrusters, q && engineMultiplier > 0);
+
+        if (w || s || q || e)
+        {
+            heatManager.AddBurstHeat(engineSubsystem);
+            rb.linearDamping = 0f;
+        }
+        else 
+        {
+            rb.linearDamping = linearDamping;
+        }
     }
 
     private void HandleRotation()
     {
+        if (Input.GetKey(KeyCode.Space) || showGUI)
+        {
+            rb.angularVelocity = Vector3.zero;
+            currentRotationSpeed = 0f;
+            ToggleThrusters(rotateLeftThrusters, false);
+            ToggleThrusters(rotateRightThrusters, false);
+            return;
+        }
+
+            
+
+
         bool a = Input.GetKey(KeyCode.A);
         bool d = Input.GetKey(KeyCode.D);
 
@@ -164,12 +225,17 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
         currentRotationSpeed = Mathf.MoveTowards(currentRotationSpeed, targetSpeed, rotationAcceleration * Time.fixedDeltaTime);
 
-        float turnMultiplier = thrusterSubsystem != null ? thrusterSubsystem.currentAllocated / (float)thrusterSubsystem.data.requiredEnergy: 1f;
+        float turnMultiplier = thrusterSubsystem != null ? thrusterSubsystem.currentAllocated / (float)thrusterSubsystem.energyData.requiredEnergy: 1f;
 
         rb.angularVelocity = new Vector3(0f, currentRotationSpeed * rotationThrust * turnMultiplier * Time.fixedDeltaTime, 0f);
 
         ToggleThrusters(rotateLeftThrusters, d && turnMultiplier>0f);
         ToggleThrusters(rotateRightThrusters, a && turnMultiplier>0f);
+
+        if (a || d)
+        {
+            heatManager.AddBurstHeat(thrusterSubsystem);
+        }
     }
 
     private void LimitVelocity()
@@ -193,7 +259,6 @@ public class ShipMovementThirdPerson : MonoBehaviour
         if (thirdPersonCam != null)
         {
             var posComp = thirdPersonCam.GetComponent<CinemachinePositionComposer>();
-            var rotComp = thirdPersonCam.GetComponent<CinemachineRotationComposer>();
             if (posComp != null)
             {
                 posComp.Damping = thirdPersonPositionDamping;
@@ -243,7 +308,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
     {
         InitStyles();
 
-        GUI.Label(new Rect(Screen.width - 240, 20, 260, 40), $"{(showGUI ? "Release" : "Hold")} {toggleGUIKey} to {(showGUI ? "hide" : "show")} controls", labelStyle);
+        GUI.Label(new Rect(Screen.width - 300, 20, 300, 40), $"Press {toggleGUIKey} to {(showGUI ? "hide" : "show")} controls", labelStyle);
 
         if (showGUI)
         {
@@ -256,6 +321,8 @@ public class ShipMovementThirdPerson : MonoBehaviour
             reverseThrust = LabeledSlider("Reverse Thrust", reverseThrust, 0, 100);
             verticalThrust = LabeledSlider("Vertical Thrust", verticalThrust, 0, 100);
             maxLinearSpeed = LabeledSlider("Max Linear Speed", maxLinearSpeed, 0, 100);
+            linearDamping = LabeledSlider("Linear Damping", linearDamping, 0, 2);
+
             GUILayout.Space(10);
 
             GUILayout.Label("⚙️ Rotation Controls", headerStyle);
@@ -300,16 +367,16 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
     private void ResetDefaults()
     {
-        mainThrust = 5.97f;
-        strafeThrust = 2.62f;
-        reverseThrust = 3.50f;
-        rotationThrust = 53.70f;
-        rotationAcceleration = 12.81f;
-        maxAngularSpeed = 0.56f;
-        rotationDamping = 5.09f;
-        maxLinearSpeed = 10f;
+        mainThrust = 5f;
+        strafeThrust = 3f;
+        reverseThrust = 3f;
+        rotationThrust = 25f;
+        rotationAcceleration = 7f;
+        maxAngularSpeed = 2f;
+        rotationDamping = 5f;
+        maxLinearSpeed = 20f;
 
-        thirdPersonZoom = 10f;
+        thirdPersonZoom = 13f;
         thirdPersonPositionOffset = new Vector3(0f, 2.81f, -1.23f);
         thirdPersonRotationOffset = Vector3.zero;
         thirdPersonPositionDamping = new Vector3(0.5f,0.5f,0.5f);

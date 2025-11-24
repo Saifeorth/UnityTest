@@ -11,7 +11,6 @@ GameObject:
   - component: {fileID: 1464591999244009903}
   - component: {fileID: 3128478965684731148}
   - component: {fileID: 3603744153748119840}
-  - component: {fileID: 2171052598751472896}
   - component: {fileID: -4848665448330763662}
   m_Layer: 0
   m_Name: asteroid_mod_09_low
@@ -91,21 +90,6 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &2171052598751472896
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 675436714040156435}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 279330115d793c949991310f343b05dd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AsteroidRandomRotation
-  minRotationSpeed: 3
-  maxRotationSpeed: 7
-  randomizeOnStart: 1
 --- !u!114 &-4848665448330763662
 MonoBehaviour:
   m_ObjectHideFlags: 0

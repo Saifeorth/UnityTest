@@ -8,6 +8,8 @@ public class WeaponManager : MonoBehaviour
 
     public WeaponSubsystem[] weaponSubsystems;
     public SubsystemController weaponSubsystemController;
+    public HeatManager heatManager;
+    public ShipMovementThirdPerson playerShip;
 
     public int totalEnergyFromSubsystem = 0;
     public int totalAllocatedToWeapons = 0;
@@ -70,7 +72,7 @@ public class WeaponManager : MonoBehaviour
 
     void HandleFiring()
     {
-        if (Input.GetKey(KeyCode.Space)) return; // Disable firing when space is held
+        if (Input.GetKey(KeyCode.Space) || playerShip.showGUI) return; // Disable firing when space is held
 
         if (Input.GetMouseButton(0))
             FireAllEnabledWeapons();
@@ -89,6 +91,7 @@ public class WeaponManager : MonoBehaviour
             if (ws.isEnabled)  // fully powered
             {
                 ws.weapon.Fire(target);
+                heatManager.AddBurstHeat(weaponSubsystemController);
             }
         }
     }

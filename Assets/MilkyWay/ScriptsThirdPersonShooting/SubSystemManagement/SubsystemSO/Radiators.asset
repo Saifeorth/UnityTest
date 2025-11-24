@@ -13,5 +13,5 @@ MonoBehaviour:
   m_Name: Radiators
   m_EditorClassIdentifier: Assembly-CSharp::EnergySubsystem
   systemName: Radiators
-  requiredEnergy: 1
+  requiredEnergy: 4
   icon: {fileID: 0}
