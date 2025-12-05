@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections;
 
 public class WeaponManager : MonoBehaviour
@@ -6,121 +6,82 @@ public class WeaponManager : MonoBehaviour
     public LayerMask aimLayerMask;
     private Camera mainCam;
 
-    public WeaponSubsystem[] weaponSubsystems;
-    public SubsystemController weaponSubsystemController;
     public HeatManager heatManager;
     public ShipMovementThirdPerson playerShip;
 
-    public int totalEnergyFromSubsystem = 0;
-    public int totalAllocatedToWeapons = 0;
+    private WeaponSubsystem currentSelected;
 
-    private void OnEnable()
-    {
-        weaponSubsystemController.onEnergyChanged += SetTotalEnergy;
-    }
+    public WeaponSubsystem[] subsystems;
 
-    private void OnDestroy()
-    {
-        weaponSubsystemController.onEnergyChanged -= SetTotalEnergy;
-    }
 
     void Start()
     {
         mainCam = Camera.main;
-
-        // Initialize UI
-        foreach (var ws in weaponSubsystems)
-            ws.InitializeUI();
     }
 
-    public void SetTotalEnergy(int newTotalEnergy)
+
+    void Update()
     {
-        totalEnergyFromSubsystem = newTotalEnergy;
-        ClampWeaponAllocations();
+        CheckNumberInput();
+        HandleFiring();
     }
 
-    private void ClampWeaponAllocations()
+    private void CheckNumberInput()
     {
-        // Ensure weapon allocations never exceed available energy
-        int sum = 0;
-        foreach (var ws in weaponSubsystems)
-            sum += ws.currentAllocated;
-
-        totalAllocatedToWeapons = sum;
-
-        while (totalAllocatedToWeapons > totalEnergyFromSubsystem)
+        for (int i = 0; i < subsystems.Length; i++)
         {
-            // remove from last enabled weapon
-            for (int i = weaponSubsystems.Length - 1; i >= 0; i--)
+            if (Input.GetKeyDown(KeyCode.Alpha1 + i))
             {
-                if (weaponSubsystems[i].currentAllocated > 0)
-                {
-                    weaponSubsystems[i].currentAllocated--;
-                    weaponSubsystems[i].UpdateBars();
-                    weaponSubsystems[i].UpdateSubsystemState();
-                    totalAllocatedToWeapons--;
-                    break;
-                }
+                Select(subsystems[i]);
+                break;
             }
         }
     }
 
-    void Update()
-    {
-        HandleFiring();
-    }
 
     void HandleFiring()
     {
-        if (Input.GetKey(KeyCode.Space) || playerShip.showGUI) return; // Disable firing when space is held
+        if (Input.GetMouseButton(1) || playerShip.showGUI) return; 
+
 
         if (Input.GetMouseButton(0))
-            FireAllEnabledWeapons();
+            FireSelectedWeapon();
     }
 
-    void FireAllEnabledWeapons()
+    void FireSelectedWeapon()
     {
-        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        if (currentSelected ==null)
+            return;
+
+        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f));
         Vector3 target = ray.origin + ray.direction * 1000f;
 
         if (Physics.Raycast(ray, out RaycastHit hit, 2000f, aimLayerMask, QueryTriggerInteraction.Ignore))
             target = hit.point;
 
-        foreach (var ws in weaponSubsystems)
+        if(currentSelected.funcState == SubsystemFunctionalState.Idle || currentSelected.visualState == SubsystemVisualState.Disabled || currentSelected.isVenting)
+            return;
+
+        if (currentSelected.weapon.Fire(target))
         {
-            if (ws.isEnabled)  // fully powered
-            {
-                ws.weapon.Fire(target);
-                heatManager.AddBurstHeat(weaponSubsystemController);
-            }
+            heatManager.AddBurstHeat(currentSelected);
         }
-    }
-    public bool TryAllocateEnergy(WeaponSubsystem target)
-    {
-        if (totalAllocatedToWeapons >= totalEnergyFromSubsystem)
-            return false;
 
-        if (target.currentAllocated >= target.weapon.requiredEnergy)
-            return false;
-
-        target.currentAllocated++;
-        target.UpdateBars();
-        target.UpdateSubsystemState();
-
-        totalAllocatedToWeapons++;
-        return true;
+        currentSelected.UpdateDescription();
     }
 
-    public bool TryDeallocateEnergy(WeaponSubsystem target)
+    public void Select(WeaponSubsystem weaponSubsystem)
     {
-        if (target.currentAllocated <= 0)
-            return false;
+        // Prevent double selections
+        if (currentSelected == weaponSubsystem)
+            return;
 
-        target.currentAllocated--;
-        target.UpdateBars();
-        target.UpdateSubsystemState();
+        // Deselect previous
+        if (currentSelected != null)
+            currentSelected.Deselect();
 
-        totalAllocatedToWeapons--;
-        return true;
+        currentSelected = weaponSubsystem;
+
+        weaponSubsystem.ApplySelectedState();
     }
 }

@@ -7,9 +7,9 @@ public class LaserWeapon : Weapon
         projectileSpeed = 150f; // override default if needed
     }
 
-    public override void Fire(Vector3 targetPosition)
+    public override bool Fire(Vector3 targetPosition)
     {
         // Optionally: add sound, flash, or laser visual effects here
-        base.Fire(targetPosition);
+        return base.Fire(targetPosition);
     }
 }

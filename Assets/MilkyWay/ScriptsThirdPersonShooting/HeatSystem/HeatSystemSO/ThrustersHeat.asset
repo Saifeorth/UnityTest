@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: ThrustersHeat
   m_EditorClassIdentifier: Assembly-CSharp::HeatSubsystemData
   heatPerSecondActive: 0
-  burstHeat: 1
-  onlyGenerateWhenEnabled: 0
+  burstHeat: 0.1
+  initialHeat: 5
+  surgeMultiplier: 3

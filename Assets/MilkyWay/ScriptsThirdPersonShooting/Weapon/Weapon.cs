@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
 using UnityEngine.Rendering;
@@ -11,6 +12,14 @@ public abstract class Weapon : MonoBehaviour
     public float projectileSpeed = 100f;
     public Vector3 projectileRotationOffset;
     [HideInInspector] public float fireCooldownPercent = 0f;
+
+    [Header("Ammo Settings")]
+    public int cargoAmmo = 200;        // total ammo in storage
+    public int clipSize = 20;          // bullets per reload
+    public float reloadTime = 2f;      // seconds
+    public int currentClipAmmo;        // runtime
+    public bool isReloading = false;
+    private Coroutine reloadRoutine;
 
     [Header("Energy Settings")]
     public int requiredEnergy = 1;
@@ -31,6 +40,8 @@ public abstract class Weapon : MonoBehaviour
     protected float nextFireTime;
     private Queue<GameObject> projectilePool;
 
+    public WeaponSubsystem weaponSubsystem;
+
     protected virtual void Awake()
     {
         // Initialize pool
@@ -45,6 +56,8 @@ public abstract class Weapon : MonoBehaviour
                 projectilePool.Enqueue(proj);
             }
         }
+
+        currentClipAmmo = Mathf.Min(clipSize, cargoAmmo);
     }
 
     protected virtual void Update()
@@ -64,15 +77,31 @@ public abstract class Weapon : MonoBehaviour
         fireCooldownPercent = 1f - (timeLeft / fireRate);
     }
 
-    public virtual void Fire(Vector3 targetPosition)
+    public virtual bool Fire(Vector3 targetPosition)
     {
-        if (Time.time < nextFireTime) return;
+        if (isReloading) return false;
+        if (Time.time < nextFireTime) return false;
+
+        // Clip empty → reload automatically
+        if (currentClipAmmo <= 0)
+        {
+            TryReload();
+            return false;
+        }
+
+        // No cargo left = no ammo left at all
+        if (cargoAmmo <= 0 && currentClipAmmo <= 0)
+            return false;
+
 
         nextFireTime = Time.time + fireRate;
         fireCooldownPercent = 0f;
 
+        currentClipAmmo--;
+
+
         if (firePoints == null || firePoints.Length == 0 || projectilePrefab == null)
-            return;
+            return false;
 
         // 🔊 Play sound once per shot
         PlayRandomFireSound();
@@ -91,6 +120,13 @@ public abstract class Weapon : MonoBehaviour
                 rb.linearVelocity = dir * projectileSpeed;
             }
         }
+
+        // After firing → if clip is empty, auto reload
+        if (currentClipAmmo <= 0)
+            TryReload();
+
+
+        return true;
     }
 
     public GameObject GetPooledProjectile(Vector3 position, Quaternion rotation)
@@ -116,6 +152,31 @@ public abstract class Weapon : MonoBehaviour
         }
 
         return proj;
+    }
+
+    public bool TryReload()
+    {
+        if (isReloading) return false;
+        if (cargoAmmo <= 0) return false;
+
+        reloadRoutine = StartCoroutine(ReloadRoutine());
+        return true;
+    }
+
+    private IEnumerator ReloadRoutine()
+    {
+        isReloading = true;
+
+        yield return new WaitForSeconds(reloadTime);
+
+        int ammoNeeded = clipSize - currentClipAmmo;
+        int ammoToLoad = Mathf.Min(ammoNeeded, cargoAmmo);
+
+        cargoAmmo -= ammoToLoad;
+        currentClipAmmo += ammoToLoad;
+
+        isReloading = false;
+        weaponSubsystem.UpdateDescription();
     }
 
     public void PlayRandomFireSound()

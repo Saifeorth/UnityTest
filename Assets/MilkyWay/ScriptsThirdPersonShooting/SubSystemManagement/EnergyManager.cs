@@ -10,9 +10,11 @@ public class EnergyManager : MonoBehaviour
 
     [Header("Energy")]
     public int totalEnergy = 10;
+    public bool energyDependencyEnabled = false;
     private int remainingEnergy;
 
     [Header("UI")]
+    public GameObject energyBarsContainer;
     public Image[] globalBars;
 
     [Header("Subsystems")]
@@ -21,22 +23,25 @@ public class EnergyManager : MonoBehaviour
     private void Start()
     {
         remainingEnergy = totalEnergy;
+        SetEnergyDependency(energyDependencyEnabled);
         RefreshUI();
     }
 
 
     private void Awake()
     {
-        HeatManager.OnVentingStart += ForceDeallocate;
+        HeatManager.OnVentingStart += PauseInputs;
     }
 
     private void OnDestroy()
     {
-        HeatManager.OnVentingStart -= ForceDeallocate;
+        HeatManager.OnVentingStart -= PauseInputs;
     }
 
     public bool TryAllocateEnergy(SubsystemController s)
     {
+        if (!energyDependencyEnabled) return false;
+
         if (remainingEnergy == 0) return false;
         if (s.currentAllocated >= s.energyData.requiredEnergy) return false;
 
@@ -53,6 +58,8 @@ public class EnergyManager : MonoBehaviour
 
     public bool TryDeallocateEnergy(SubsystemController s)
     {
+        if (!energyDependencyEnabled) return false;
+
         if (s.currentAllocated <= 0) return false;
 
         s.currentAllocated--;
@@ -103,5 +110,25 @@ public class EnergyManager : MonoBehaviour
         }
 
         RefreshUI();
+    }
+
+    public void SetEnergyDependency(bool enabled)
+    {
+        energyDependencyEnabled = enabled;
+        energyBarsContainer.SetActive(energyDependencyEnabled);
+
+        foreach (var subsystem in subsystems)
+            subsystem.ToggleEnergyUI(energyDependencyEnabled);
+
+    }
+
+   
+
+
+
+    private void PauseInputs()
+    {
+        // Do nothing to energy values
+        // Subsystem buttons will lock themselves (via SubsystemEnergyButton)
     }
 }

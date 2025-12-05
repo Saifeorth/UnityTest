@@ -1,40 +1,53 @@
 ﻿using UnityEngine;
 using UnityEngine.EventSystems;
 
-public class WeaponUIButton : MonoBehaviour, IPointerClickHandler
+public class WeaponUIButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
-    public WeaponManager manager;
-    public WeaponSubsystem subsystem;
+    public WeaponSubsystem controller;
+    public WeaponManager weaponManager;
 
-    public AudioSource audioSource;
+    private bool isHovering = false;
 
-    public AudioClip allocateEnergyClip;
-    public AudioClip deallocateEnergyClip;
-
-    private void Start()
+    private void Update()
     {
-        audioSource = GetComponent<AudioSource>();
+        bool rightHeld = Input.GetMouseButton(1);
+
+        // --- Apply Hover Visuals Every Frame ---
+        controller.SetHover(isHovering, rightHeld);
+
+        // --- VISUAL STATE CHANGE (RMB + K) ---
+        if (rightHeld && Input.GetKeyDown(KeyCode.K) && isHovering)
+        {
+            controller.CycleVisualState();
+        }
     }
 
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        isHovering = true;
+    }
 
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        isHovering = false;
+    }
+
+    // --- FUNCTIONAL STATE CHANGE (RMB + LMB) ---
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (eventData.button == PointerEventData.InputButton.Left)
+        if (eventData.button == PointerEventData.InputButton.Left &&
+            Input.GetMouseButton(1))
         {
-            bool success = manager.TryAllocateEnergy(subsystem);
-            if (success)
+            // If NOT selected, this click ONLY selects — no transition
+            if (!controller.isSelected)
             {
-                audioSource.PlayOneShot(allocateEnergyClip);
+                weaponManager.Select(controller);
+                return;
             }
 
-        }
-        else if (eventData.button == PointerEventData.InputButton.Right)
-        {
-            bool success = manager.TryDeallocateEnergy(subsystem);
-            if (success)
-            {
-                audioSource.PlayOneShot(deallocateEnergyClip);
-            }
+            // If already selected, THIS click advances functional state
+            controller.AdvanceFunctionalState();
         }
     }
+
 }

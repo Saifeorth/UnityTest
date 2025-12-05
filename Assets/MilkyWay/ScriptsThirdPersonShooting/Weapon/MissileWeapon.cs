@@ -2,61 +2,86 @@
 
 public class MissileWeapon : Weapon
 {
-    public float trackingStrength = 5f;
+    public float zigzagRadius = 2f;
+    public float arcForward = 15f;
+    public Vector2 arcUpRange = new Vector2(2f, 6f);
 
-    private void Start()
+    protected override void Awake()
     {
-        projectileSpeed = 60f; // slower than lasers
+        base.Awake();
+        projectileSpeed = 60f;
     }
 
-    public override void Fire(Vector3 targetPosition)
+    public override bool Fire(Vector3 targetPosition)
     {
-        if (Time.time < nextFireTime) return;
-        nextFireTime = Time.time + fireRate;
+        // Let base.Fire() handle:
+        // cooldown, ammo, reload, sound, nextFireTime
+        if (!CanFireInternal())
+            return false;
 
-        if (firePoints == null || firePoints.Length == 0 || projectilePrefab == null)
-            return;
+        ApplyFireInternal();   // consume ammo + set cooldown
 
-        // Play sound once per shot
-        base.PlayRandomFireSound();
-
+        // -----------------------------------------
+        // Missile-specific spawn logic
+        // -----------------------------------------
         foreach (Transform point in firePoints)
         {
-            Vector3 dir = (targetPosition - point.position).normalized;
-            Quaternion rot = Quaternion.LookRotation(dir) * Quaternion.Euler(projectileRotationOffset);
+            // Spawn from pool but with no default velocity
+            Quaternion lookRot = Quaternion.LookRotation(targetPosition - point.position);
+            GameObject proj = GetPooledProjectile(point.position, lookRot);
 
-            GameObject proj = GetPooledProjectile(point.position, rot);
             if (!proj) continue;
 
-            //Rigidbody rb = proj.GetComponent<Rigidbody>();
-            //if (rb)
-            //{
-            //    rb.linearVelocity = dir * projectileSpeed;
-            //}
-        }
-
-        foreach (Transform firePoint in firePoints)
-        {
-            Collider[] nearby = Physics.OverlapSphere(firePoint.position, 2f);
-
-            foreach (var col in nearby)
+            // Find missile behaviour component
+            var zigzag = proj.GetComponent<MissileZigZag>();
+            if (zigzag)
             {
-                var zigzag = col.GetComponent<MissileZigZag>();
-                if (zigzag != null)
-                {
-                    Vector3 start = firePoint.position;
+                Vector3 start = point.position;
 
-                    // control point forward & upward for arc
-                    Vector3 control = start +
-                                      firePoint.forward * 15f +
-                                      firePoint.up * Random.Range(2f, 6f);
+                // Bezier control point to create arc
+                Vector3 control =
+                    start +
+                    point.forward * arcForward +
+                    point.up * Random.Range(arcUpRange.x, arcUpRange.y);
 
-                    Vector3 end = targetPosition;
+                Vector3 end = targetPosition;
 
-                    zigzag.InitCurve(start, control, end, projectileSpeed);
-                }
+                zigzag.InitCurve(start, control, end, projectileSpeed);
             }
         }
+
+        return true;
     }
 
+    // ---------------------------------------------------
+    // INTERNAL FIRE LOGIC from base class, but separated
+    // ---------------------------------------------------
+    private bool CanFireInternal()
+    {
+        if (isReloading) return false;
+        if (Time.time < nextFireTime) return false;
+
+        if (currentClipAmmo <= 0)
+        {
+            TryReload();
+            return false;
+        }
+
+        if (cargoAmmo <= 0 && currentClipAmmo <= 0)
+            return false;
+
+        return true;
+    }
+
+    private void ApplyFireInternal()
+    {
+        nextFireTime = Time.time + fireRate;
+        fireCooldownPercent = 0f;
+        currentClipAmmo--;
+
+        PlayRandomFireSound();
+
+        if (currentClipAmmo <= 0)
+            TryReload();
+    }
 }

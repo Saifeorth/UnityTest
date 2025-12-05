@@ -24,7 +24,6 @@ public class SubsystemKeyboardNavigator : MonoBehaviour
 
     private void OnDisable()
     {
-        // Kill all tweens associated with this script
         DOTween.Kill(this);
     }
 
@@ -42,8 +41,6 @@ public class SubsystemKeyboardNavigator : MonoBehaviour
     }
 
     // ---------------------------------------------------------
-    // Validation (prevents crashes)
-    // ---------------------------------------------------------
     private bool Validate()
     {
         if (energyManager == null || heatManager == null)
@@ -52,26 +49,20 @@ public class SubsystemKeyboardNavigator : MonoBehaviour
         if (energyManager.subsystems == null || energyManager.subsystems.Length == 0)
             return false;
 
-        // Clamp index safely
         selectedIndex = Mathf.Clamp(selectedIndex, 0, energyManager.subsystems.Length - 1);
         return true;
     }
 
-    // ---------------------------------------------------------
-    // SELECTION MODE:
-    // - Active when: GUI open OR space is held
-    // ---------------------------------------------------------
     private bool IsSelectionModeActive()
     {
         return guiOpen || Input.GetKey(KeyCode.Space);
     }
 
     // ---------------------------------------------------------
-    // MODE TOGGLING
+    // GUI / SPACE MODE
     // ---------------------------------------------------------
     private void HandleMode()
     {
-        // Toggle GUI mode
         if (Input.GetKeyDown(uiToggleKey))
         {
             guiOpen = !guiOpen;
@@ -79,29 +70,21 @@ public class SubsystemKeyboardNavigator : MonoBehaviour
             if (guiOpen)
                 UpdateHighlight(true);
             else
-                ResetAllScales(); // Clear selection highlight
-        }
-
-        // Space key opens temporary selection mode
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            UpdateHighlight(true);
-        }
-
-        if (Input.GetKeyUp(KeyCode.Space))
-        {
-            // If GUI isn't open, remove highlight
-            if (!guiOpen)
                 ResetAllScales();
         }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+            UpdateHighlight(true);
+
+        if (Input.GetKeyUp(KeyCode.Space) && !guiOpen)
+            ResetAllScales();
     }
 
     // ---------------------------------------------------------
-    // NAVIGATION (A/D)
+    // A/D navigation
     // ---------------------------------------------------------
     private void HandleNavigation()
     {
-        // Disable navigation during venting
         if (heatManager.isVenting)
             return;
 
@@ -114,15 +97,14 @@ public class SubsystemKeyboardNavigator : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.A))
         {
             selectedIndex--;
-            if (selectedIndex < 0)
-                selectedIndex = energyManager.subsystems.Length - 1;
+            if (selectedIndex < 0) selectedIndex = energyManager.subsystems.Length - 1;
 
             UpdateHighlight();
         }
     }
 
     // ---------------------------------------------------------
-    // ALLOCATION (W/S)
+    // ENERGY / DIRECT TOGGLE (W/S)
     // ---------------------------------------------------------
     private void HandleAllocation()
     {
@@ -130,27 +112,49 @@ public class SubsystemKeyboardNavigator : MonoBehaviour
             return;
 
         var subsystem = energyManager.subsystems[selectedIndex];
-
-        // Get the button component on this subsystem
         var button = subsystem.GetComponent<SubsystemEnergyButton>();
+        bool energyMode = energyManager.energyDependencyEnabled;
 
+        // ⭐⭐⭐ MODE 1: Energy dependency ON (use energy system)
+        if (energyMode)
+        {
+            if (Input.GetKeyDown(KeyCode.W))
+            {
+                bool success = energyManager.TryAllocateEnergy(subsystem);
+                if (success && button != null) button.PlayAllocateSound();
+            }
+
+            if (Input.GetKeyDown(KeyCode.S))
+            {
+                bool success = energyManager.TryDeallocateEnergy(subsystem);
+                if (success && button != null) button.PlayDeallocateSound();
+            }
+
+            return;
+        }
+
+        // ⭐⭐⭐ MODE 2: Energy dependency OFF (direct enable/disable)
         if (Input.GetKeyDown(KeyCode.W))
         {
-            bool success = energyManager.TryAllocateEnergy(subsystem);
-            if (success && button != null)
-                button.PlayAllocateSound();
+            if (!subsystem.isEnabled && !subsystem.isTransitioning)
+            {
+                subsystem.EnableSubsystem();
+                if (button != null) button.PlayAllocateSound();
+            }
         }
 
         if (Input.GetKeyDown(KeyCode.S))
         {
-            bool success = energyManager.TryDeallocateEnergy(subsystem);
-            if (success && button != null)
-                button.PlayDeallocateSound();
+            if (subsystem.isEnabled && !subsystem.isTransitioning)
+            {
+                subsystem.DisableSubsystem();
+                if (button != null) button.PlayDeallocateSound();
+            }
         }
     }
 
     // ---------------------------------------------------------
-    // HIGHLIGHT UI
+    // HIGHLIGHTING
     // ---------------------------------------------------------
     private void ResetAllScales()
     {
@@ -170,7 +174,6 @@ public class SubsystemKeyboardNavigator : MonoBehaviour
     {
         ResetAllScales();
 
-        // scale up selected
         var target = energyManager.subsystems[selectedIndex];
         RectTransform rt = target.GetComponent<RectTransform>();
 

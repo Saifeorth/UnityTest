@@ -10,8 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 69c1dac297ba0174fa11d051be12f98e, type: 3}
-  m_Name: RadiatorHeat
+  m_Name: RailGunHeat
   m_EditorClassIdentifier: Assembly-CSharp::HeatSubsystemData
-  heatPerSecondActive: -3
-  burstHeat: 0
-  onlyGenerateWhenEnabled: 0
+  heatPerSecondActive: 0
+  burstHeat: 0.3
+  initialHeat: 2
+  surgeMultiplier: 2

@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: EngineHeat
   m_EditorClassIdentifier: Assembly-CSharp::HeatSubsystemData
   heatPerSecondActive: 0
-  burstHeat: 1
-  onlyGenerateWhenEnabled: 0
+  burstHeat: 0.1
+  initialHeat: 3
+  surgeMultiplier: 2

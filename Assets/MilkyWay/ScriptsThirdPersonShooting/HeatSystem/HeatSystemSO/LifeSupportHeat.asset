@@ -14,4 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HeatSubsystemData
   heatPerSecondActive: 5
   burstHeat: 0
-  onlyGenerateWhenEnabled: 0
+  initialHeat: 5
+  surgeMultiplier: 3
+  onlyGenerateWhenEnabled: 1

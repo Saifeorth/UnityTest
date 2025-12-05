@@ -18,8 +18,8 @@ public class ShipMovementThirdPerson : MonoBehaviour
     public float rotationDamping = 4f;
 
     [Header("Energy Subsystems")]
-    public SubsystemController engineSubsystem;     // For forward movement
-    public SubsystemController thrusterSubsystem;
+    public SubsystemStateController engineSubsystem;     // For forward movement
+    public SubsystemStateController thrusterSubsystem;
 
     [Header("Vertical Movement Settings")]
     public float verticalThrust = 3f;
@@ -108,7 +108,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
 
         // Manage cursor visibility & locking
-        if (Input.GetKey(KeyCode.Space) || showGUI)
+        if (Input.GetKey(KeyCode.Mouse1) || showGUI)
         {
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
@@ -132,7 +132,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
     private void HandleThrust()
     {
-        if (Input.GetKey(KeyCode.Space) || showGUI)
+        if (Input.GetKey(KeyCode.Space) || showGUI || engineSubsystem.isVenting || engineSubsystem.funcState == SubsystemFunctionalState.Idle || engineSubsystem.visualState == SubsystemVisualState.Disabled)
         {
             ToggleThruster(forwardThruster, false);
             ToggleThruster(reverseThruster, false);
@@ -146,9 +146,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
         Vector3 force = Vector3.zero;
 
-         float engineMultiplier = engineSubsystem != null
-        ? engineSubsystem.currentAllocated / (float)engineSubsystem.energyData.requiredEnergy
-        : 1f;
+        float engineMultiplier = engineSubsystem.funcState == SubsystemFunctionalState.Surge? 1f: engineSubsystem.heatData.surgeMultiplier;
 
         bool w = Input.GetKey(KeyCode.W);
         bool s = Input.GetKey(KeyCode.S);
@@ -204,7 +202,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
     private void HandleRotation()
     {
-        if (Input.GetKey(KeyCode.Space) || showGUI)
+        if (Input.GetKey(KeyCode.Space) || showGUI || thrusterSubsystem.isVenting || thrusterSubsystem.funcState == SubsystemFunctionalState.Idle || thrusterSubsystem.visualState == SubsystemVisualState.Disabled)
         {
             rb.angularVelocity = Vector3.zero;
             currentRotationSpeed = 0f;
@@ -225,7 +223,9 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
         currentRotationSpeed = Mathf.MoveTowards(currentRotationSpeed, targetSpeed, rotationAcceleration * Time.fixedDeltaTime);
 
-        float turnMultiplier = thrusterSubsystem != null ? thrusterSubsystem.currentAllocated / (float)thrusterSubsystem.energyData.requiredEnergy: 1f;
+        //float turnMultiplier = thrusterSubsystem != null ? thrusterSubsystem.currentAllocated / (float)thrusterSubsystem.energyData.requiredEnergy: 1f;
+
+        float turnMultiplier = thrusterSubsystem.funcState == SubsystemFunctionalState.Surge ? 1f : thrusterSubsystem.heatData.surgeMultiplier;
 
         rb.angularVelocity = new Vector3(0f, currentRotationSpeed * rotationThrust * turnMultiplier * Time.fixedDeltaTime, 0f);
 

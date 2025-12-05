@@ -9,6 +9,7 @@ public class SubsystemController : MonoBehaviour
     [Header("Subsystem Data")]
     public EnergySubsystem energyData;
     public HeatSubsystemData heatData;
+    public EnergyManager energyManager;
 
     [Header("UI")]
     public TextMeshProUGUI subsystemNameText;
@@ -19,11 +20,36 @@ public class SubsystemController : MonoBehaviour
     [Header("Runtime")]
     public int currentAllocated = 0;
     public bool isEnabled = false;
+    public bool isVenting = false;
+    public bool isTransitioning = false;
 
     // EVENTS
     public event Action<int> onEnergyChanged;
     public Action<SubsystemController> onSubsystemEnabled;
     public Action<SubsystemController> onSubsystemDisabled;
+
+    private void Awake()
+    {
+        HeatManager.OnVentingStart += StopSubsystem;
+        HeatManager.OnVentingStop += ResumeSubsystem;
+    }
+
+    private void OnDestroy()
+    {
+        HeatManager.OnVentingStart -= StopSubsystem;
+        HeatManager.OnVentingStop -= ResumeSubsystem;
+    }
+
+
+    private void StopSubsystem()
+    {
+        isVenting = true;
+    }
+
+    private void ResumeSubsystem()
+    {
+        isVenting = false;
+    }
 
     private void Start()
     {
@@ -36,19 +62,35 @@ public class SubsystemController : MonoBehaviour
     {
         subsystemNameText.text = energyData.systemName;
 
-        for (int i = 0; i < energyBars.Length; i++)
-        {
-            bool active = i < energyData.requiredEnergy;
-            energyBars[i].gameObject.SetActive(active);
 
-            if (i < energyFills.Length)
+        //old code to set active based on required energy
+
+        if (energyManager.energyDependencyEnabled)
+        {
+            for (int i = 0; i < energyBars.Length; i++)
             {
-                energyFills[i].gameObject.SetActive(active);
-                energyFills[i].transform.localScale = Vector3.zero;
+                bool active = i < energyData.requiredEnergy;
+                energyBars[i].gameObject.SetActive(active);
+
+                if (i < energyFills.Length)
+                {
+                    energyFills[i].gameObject.SetActive(active);
+                    energyFills[i].transform.localScale = Vector3.zero;
+                }
+            }
+        }
+        else 
+        {
+
+            for (int i = 0; i < energyBars.Length; i++)
+            {
+                energyBars[i].gameObject.SetActive(false);
             }
         }
 
-        enabledIcon.enabled = false;
+        enabledIcon.enabled = true;       // must be enabled so fillAmount is visible
+        enabledIcon.fillAmount = 0f;      // ✔ ensures smooth first activation
+        enabledIcon.gameObject.SetActive(true);
     }
 
     public void UpdateBars(bool animate = true)
@@ -75,30 +117,100 @@ public class SubsystemController : MonoBehaviour
 
     public void UpdateState()
     {
-        bool newState = currentAllocated >= energyData.requiredEnergy;
 
-        if (newState != isEnabled)
+        if (isVenting)
         {
-            isEnabled = newState;
-
-            if (isEnabled)
-            {
-                enabledIcon.enabled = true;
-                enabledIcon.transform.localScale = Vector3.one * 0.5f;
-                enabledIcon.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
-
-                onSubsystemEnabled?.Invoke(this);
-            }
-            else
-            {
-                enabledIcon.transform.DOScale(0f, 0.2f)
-                    .SetEase(Ease.InBack)
-                    .OnComplete(() => enabledIcon.enabled = false);
-
-                onSubsystemDisabled?.Invoke(this);
-            }
+            // Force disable UI animation but keep icon visible at 0
+            isEnabled = false;
+            enabledIcon.DOKill();
+            enabledIcon.fillAmount = 0f;
+            enabledIcon.enabled = true;
+            return;
         }
+
+        bool shouldBeEnabled = currentAllocated >= energyData.requiredEnergy;
+
+        // No change → do nothing
+        if (shouldBeEnabled == isEnabled)
+        {
+            onEnergyChanged?.Invoke(currentAllocated);
+            return;
+        }
+
+        // State changed
+        if (shouldBeEnabled)
+            EnableSubsystem();
+        else
+            DisableSubsystem();
 
         onEnergyChanged?.Invoke(currentAllocated);
     }
+
+    public void EnableSubsystem()
+    {
+        if (isTransitioning || isEnabled || isVenting)
+            return;
+
+        isTransitioning = true;
+        isEnabled = true;
+
+        enabledIcon.DOKill();
+        enabledIcon.enabled = true;
+
+        // Fill 0 → 1 in 1 sec
+        enabledIcon.DOFillAmount(1f, 1f)
+            .SetEase(Ease.OutCubic)
+            .OnComplete(() =>
+            {
+                isTransitioning = false;
+                onSubsystemEnabled?.Invoke(this);
+            });
+    }
+
+    public void DisableSubsystem()
+    {
+        if (isTransitioning || !isEnabled || isVenting)
+            return;
+
+        isTransitioning = true;
+        isEnabled = false;
+
+        enabledIcon.DOKill();
+
+        // Fill 1 → 0 in 1 sec
+        enabledIcon.DOFillAmount(0f, 1f)
+            .SetEase(Ease.InCubic)
+            .OnComplete(() =>
+            {
+                enabledIcon.enabled = true;
+                isTransitioning = false;
+                onSubsystemDisabled?.Invoke(this);
+            });
+    }
+    public void ToggleEnergyUI(bool show)
+    {
+        if (energyManager.energyDependencyEnabled)
+        {
+            for (int i = 0; i < energyBars.Length; i++)
+            {
+                bool active = i < energyData.requiredEnergy;
+                energyBars[i].gameObject.SetActive(active);
+
+                if (i < energyFills.Length)
+                {
+                    energyFills[i].gameObject.SetActive(active);
+                    energyFills[i].transform.localScale = Vector3.zero;
+                }
+            }
+
+            UpdateBars();
+            UpdateState();
+        }
+        else 
+        {
+            for (int i = 0; i < energyBars.Length; i++)
+                energyBars[i].gameObject.SetActive(show);
+        }
+    }
+
 }

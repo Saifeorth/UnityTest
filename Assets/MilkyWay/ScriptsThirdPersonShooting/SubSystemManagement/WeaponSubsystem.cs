@@ -1,135 +1,446 @@
+﻿using DG.Tweening;
+using System;
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using DG.Tweening;
 
 public class WeaponSubsystem : MonoBehaviour
 {
     public Weapon weapon;
 
+    [Header("Heat Data")]
+    public HeatSubsystemData heatData;
+
     [Header("UI References")]
-    public Image[] energyBars;
-    public Image[] energyFills;
-    public UnityEngine.UI.Outline subWeaponEnabledImage;
+    public Image topLabelImage;
+    public Image bottomLabelImage;
+    public Image bgImage;
 
-    [Header("Subsystem UI")]
-    public TextMeshProUGUI subWeaponNameText;
+    public TextMeshProUGUI titleText;
+    public TextMeshProUGUI titleIndexText;
+    public TextMeshProUGUI stateText;
+    public TextMeshProUGUI heatText;
+    public TextMeshProUGUI descriptionText;
 
-    [Header("Runtime State")]
-    public int currentAllocated = 0;
-    public bool isEnabled = false;
+    // ---------------- Colors ----------------
+    public Color normalColor = new(0.84f, 0.93f, 0.92f);
+    public Color hoverColor = Color.black;
 
-    [Header("Fire Rate UI")]
-    public Image fireRateFill;
+    public Color titleHover = Color.white;
 
-    // Simple animation values
-    private const float popScale = 1.12f;
-    private const float popTime = 0.12f;
+    public Color readyColor = new(0f, 1f, 0.05f);
+    public Color surgeColor = new(1f, 0.8f, 0f);
 
-    private void Update()
+    private readonly Color damagedColor = new(1f, 0.8f, 0f); // yellow
+    private readonly Color disabledColor = new(1f, 0f, 0f);  // red
+
+    // ---------------- Runtime ----------------
+    public SubsystemFunctionalState funcState = SubsystemFunctionalState.Idle;
+    public SubsystemVisualState visualState = SubsystemVisualState.Normal;
+
+    public bool isSelected = false;
+    private bool isTransitioning = false;
+
+    private Coroutine stateRoutine;
+
+    private RectTransform rect;
+    private Vector2 originalSize;
+
+    private RectTransform bottomRect;
+    private Vector2 bottomOriginalSize;
+
+    public bool isVenting = false;     // when true → everything is paused
+    private bool cachedIsSelected = false;
+    private SubsystemFunctionalState cachedFuncState;
+
+    public Action<WeaponSubsystem> onWeaponActivated;
+    public Action<WeaponSubsystem> onWeaponDeactivated;
+
+
+
+    // --------------------------------------------------------
+
+    private void OnEnable()
     {
-        if (!isEnabled || weapon == null || fireRateFill == null)
+        HeatManager.OnVentingStart += HandleVentingStart;
+        HeatManager.OnVentingStop += HandleVentingStop;
+    }
+
+    private void OnDisable()
+    {
+        HeatManager.OnVentingStart -= HandleVentingStart;
+        HeatManager.OnVentingStop -= HandleVentingStop;
+    }
+
+    private void Start()
+    {
+        rect = GetComponent<RectTransform>();
+        originalSize = rect.sizeDelta;
+
+        bottomRect = bottomLabelImage.GetComponent<RectTransform>();
+        bottomOriginalSize = bottomRect.sizeDelta;
+
+        titleText.text = name;
+
+        if (descriptionText != null)
+        {
+            var c = descriptionText.color;
+            descriptionText.color = new Color(c.r, c.g, c.b, 0f);
+        }
+
+        ApplyVisualState();
+        UpdateStateInstant();
+    }
+
+    // --------------------------------------------------------
+    // HEAT TEXT
+    // --------------------------------------------------------
+    private string GetHeatStringFunctional()
+    {
+        switch (funcState)
+        {
+            case SubsystemFunctionalState.Idle: return "0°";
+            case SubsystemFunctionalState.Ready: return $"{(heatData.initialHeat + heatData.burstHeat)}°";
+            case SubsystemFunctionalState.Surge:
+                float surgeHeat = heatData.initialHeat + (heatData.burstHeat * heatData.surgeMultiplier);
+                return $"{surgeHeat}°";
+        }
+        return "0°";
+    }
+
+    private string GetHeatString()
+    {
+        if (visualState == SubsystemVisualState.Disabled)
+            return "";
+
+        return GetHeatStringFunctional();
+    }
+
+    private void UpdateHeatText()
+    {
+        heatText.text = GetHeatString();
+    }
+
+    // --------------------------------------------------------
+    // VISUAL STATE APPLICATION
+    // --------------------------------------------------------
+    private void ApplyVisualState()
+    {
+        switch (visualState)
+        {
+            case SubsystemVisualState.Disabled:
+                ApplyDisabledVisuals();
+                break;
+
+            case SubsystemVisualState.Damaged:
+                ApplyDamagedVisuals();
+                break;
+
+            case SubsystemVisualState.Normal:
+                ApplyNormalOrSelectedVisuals();
+                break;
+        }
+    }
+
+    private void ApplyNormalOrSelectedVisuals()
+    {
+        if (isSelected)
+        {
+            topLabelImage.color = hoverColor;
+            titleText.color = Color.white;
+            titleIndexText.color = Color.white;
+            bgImage.color = normalColor;
+
+            if (descriptionText != null)
+                descriptionText.alpha = 1f;
+        }
+        else
+        {
+            topLabelImage.color = normalColor;
+            titleText.color = Color.black;
+            titleIndexText.color = Color.black;
+            bgImage.color = normalColor;
+
+            if (descriptionText != null)
+                descriptionText.alpha = 0f;
+        }
+    }
+
+    private void ApplyDamagedVisuals()
+    {
+        bgImage.color = damagedColor;
+        topLabelImage.color = damagedColor;
+        titleText.color = Color.black;
+        titleIndexText.color = Color.black;
+        titleIndexText.color = Color.black;
+        descriptionText.alpha = 0f;
+        heatText.text = GetHeatString();
+    }
+
+    private void ApplyDisabledVisuals()
+    {
+        bgImage.color = disabledColor;
+        topLabelImage.color = disabledColor;
+        titleText.color = Color.black;
+        titleIndexText.color = Color.black;
+        stateText.text = "DISABLED";
+        heatText.text = "";
+    }
+
+    // --------------------------------------------------------
+    // SELECTION
+    // --------------------------------------------------------
+    public void ApplySelectedState()
+    {
+        if (isVenting) return;             // ← NEW
+        if (visualState == SubsystemVisualState.Disabled)
             return;
 
-        // Smooth UI fill update
-        fireRateFill.DOFillAmount(weapon.fireCooldownPercent, 0.1f);
+        isSelected = true;
+
+        float newHeight = originalSize.y * 1.5f;
+        rect.DOSizeDelta(new(originalSize.x, newHeight), 0.25f).SetEase(Ease.OutBack);
+
+        float bottomHeight = bottomOriginalSize.y * 2f;
+        bottomRect.DOSizeDelta(new(bottomOriginalSize.x, bottomHeight), 0.25f);
+
+        ApplyVisualState();
+        UpdateHeatText();
+        UpdateDescription();
     }
 
-    public void InitializeUI()
+    public void Deselect()
     {
-        if (subWeaponNameText != null)
-            subWeaponNameText.text = weapon.weaponName;
+        isSelected = false;
 
-        for (int i = 0; i < energyBars.Length; i++)
-        {
-            bool show = i < weapon.requiredEnergy;
+        rect.DOSizeDelta(originalSize, 0.25f);
+        bottomRect.DOSizeDelta(bottomOriginalSize, 0.25f);
 
-            if (energyBars[i] != null)
-                energyBars[i].gameObject.SetActive(show);
-
-            if (i < energyFills.Length && energyFills[i] != null)
-            {
-                energyFills[i].gameObject.SetActive(show);
-                energyFills[i].enabled = false;
-                energyFills[i].transform.localScale = Vector3.one;
-            }
-        }
-
-        if (fireRateFill != null)
-        {
-            fireRateFill.gameObject.SetActive(false);
-            fireRateFill.fillAmount = 0f;
-        }
-
-        if (subWeaponEnabledImage != null)
-            subWeaponEnabledImage.enabled = false;
+        ApplyVisualState();
+        UpdateHeatText();
+        UpdateDescription();
     }
 
-    public void UpdateBars()
+    // --------------------------------------------------------
+    // FUNCTIONAL STATE MACHINE
+    // --------------------------------------------------------
+    public void AdvanceFunctionalState()
     {
-        for (int i = 0; i < weapon.requiredEnergy; i++)
+        if (isVenting) return;               // ← block everything
+        if (!isSelected) return;
+        if (visualState == SubsystemVisualState.Disabled) return;
+        if (isTransitioning) return;
+
+        SubsystemFunctionalState next = funcState switch
         {
-            if (i >= energyFills.Length)
-            {
-                Debug.LogWarning($"{weapon.weaponName}: Missing fill images!");
-                return;
-            }
+            SubsystemFunctionalState.Idle => SubsystemFunctionalState.Ready,
+            SubsystemFunctionalState.Ready => SubsystemFunctionalState.Surge,
+            SubsystemFunctionalState.Surge => SubsystemFunctionalState.Idle,
+            _ => SubsystemFunctionalState.Idle
+        };
 
-            Image fill = energyFills[i];
-
-            if (i < currentAllocated)
-            {
-                // Enable instantly
-                fill.enabled = true;
-
-                // Pop animation
-                fill.transform.localScale = Vector3.one;
-                fill.transform.DOPunchScale(Vector3.one * (popScale - 1f), popTime);
-            }
-            else
-            {
-                fill.enabled = false;
-            }
-        }
+        StartFunctionalTransition(next);
     }
 
-    public void UpdateSubsystemState()
+    private void StartFunctionalTransition(SubsystemFunctionalState next)
     {
-        bool shouldEnable = currentAllocated >= weapon.requiredEnergy;
+        if (stateRoutine != null)
+            StopCoroutine(stateRoutine);
 
-        if (shouldEnable != isEnabled)
-        {
-            isEnabled = shouldEnable;
-
-            if (isEnabled)
-                OnSubWeaponEnabled();
-            else
-                OnSubWeaponDisabled();
-        }
-
-        if (subWeaponEnabledImage != null)
-            subWeaponEnabledImage.enabled = isEnabled;
+        stateRoutine = StartCoroutine(FunctionalTransitionRoutine(next));
     }
 
-    private void OnSubWeaponEnabled()
+    IEnumerator FunctionalTransitionRoutine(SubsystemFunctionalState next)
     {
-        Debug.Log($"{weapon.weaponName} ENABLED");
+        isTransitioning = true;
 
-        if (fireRateFill != null)
+        float duration = 0.5f;
+        float timer = 0f;
+
+        stateText.transform.DOPunchScale(Vector3.one * 0.15f, 0.35f);
+        heatText.transform.DOPunchScale(Vector3.one * 0.15f, 0.35f);
+
+        Color targetColor = GetStateColor(next);
+
+        while (timer < duration)
         {
-            fireRateFill.gameObject.SetActive(true);
-            fireRateFill.fillAmount = 1f;
+            timer += Time.deltaTime;
+            float p = Mathf.Clamp01(timer / duration) * 100f;
+
+            stateText.color = targetColor;
+            heatText.color = targetColor;
+
+            stateText.text = $"{next.ToString().ToUpper()} {Mathf.RoundToInt(p)}%";
+            heatText.text = GetHeatStringFunctional();
+
+            yield return null;
         }
+
+        funcState = next;
+
+        ApplyFunctionalHeatChange(next);
+
+        UpdateStateInstant();
+        ApplyVisualState();
+        UpdateHeatText();
+
+        isTransitioning = false;
     }
 
-    private void OnSubWeaponDisabled()
+    private void UpdateStateInstant()
     {
-        Debug.Log($"{weapon.weaponName} DISABLED");
-
-        if (fireRateFill != null)
+        if (visualState == SubsystemVisualState.Disabled)
         {
-            fireRateFill.gameObject.SetActive(false);
-            fireRateFill.fillAmount = 0f;
+            stateText.text = "DISABLED";
+            heatText.text = "";
+            return;
+        }
+
+        stateText.text = funcState.ToString().ToUpper();
+        stateText.color = GetStateColor(funcState);
+        heatText.text = GetHeatString();
+        heatText.color = GetStateColor(funcState);
+    }
+
+    private Color GetStateColor(SubsystemFunctionalState state)
+    {
+        return state switch
+        {
+            SubsystemFunctionalState.Ready => readyColor,
+            SubsystemFunctionalState.Surge => surgeColor,
+            _ => Color.white
+        };
+    }
+
+    // --------------------------------------------------------
+    // DEBUG VISUAL CYCLER (RMB + K)
+    // --------------------------------------------------------
+    public void CycleVisualState()
+    {
+        if (isTransitioning) return;
+
+        visualState = visualState switch
+        {
+            SubsystemVisualState.Normal => SubsystemVisualState.Damaged,
+            SubsystemVisualState.Damaged => SubsystemVisualState.Disabled,
+            SubsystemVisualState.Disabled => SubsystemVisualState.Normal,
+            _ => SubsystemVisualState.Normal
+        };
+
+        ApplyVisualState();
+        UpdateStateInstant();
+    }
+
+    #region HOVER
+    public void SetHover(bool isHovering, bool rightHeld)
+    {
+        if (isVenting) return;
+        if (visualState == SubsystemVisualState.Disabled)
+            return;
+
+        // If right-click NOT held, simply apply current visual state
+        if (!rightHeld)
+        {
+            if (!isSelected)
+                ApplyVisualState();
+            return;
+        }
+
+        // ----- Right-click held -----
+        // Hover highlight should not override visual state permanently
+        if (!isSelected && isHovering)
+        {
+            topLabelImage.color = hoverColor;
+            titleText.color = titleHover;
+            titleIndexText.color = titleHover;
+        }
+        else
+        {
+            ApplyVisualState();
         }
     }
+    #endregion
+
+    private void HandleVentingStart()
+    {
+        if (isVenting) return;
+
+        isVenting = true;
+
+        // Cache states so we can restore when venting ends
+        cachedIsSelected = isSelected;
+        cachedFuncState = funcState;
+
+        // Stop transitions
+        if (stateRoutine != null)
+            StopCoroutine(stateRoutine);
+
+        isTransitioning = false;
+
+        // Freeze visuals exactly as they are
+        ApplyVisualState();
+        UpdateStateInstant();
+        UpdateHeatText();
+    }
+
+    private void HandleVentingStop()
+    {
+        isVenting = false;
+
+        // Restore previous selection
+        if (cachedIsSelected)
+            ApplySelectedState();
+        else
+            Deselect();
+
+        // Restore functional state
+        funcState = cachedFuncState;
+
+        UpdateStateInstant();
+        ApplyVisualState();
+        UpdateHeatText();
+    }
+
+    private void ApplyFunctionalHeatChange(SubsystemFunctionalState newState)
+    {
+        // Disabled subsystems do nothing
+        if (visualState == SubsystemVisualState.Disabled)
+            return;
+
+        switch (newState)
+        {
+            case SubsystemFunctionalState.Idle:
+                // Remove initial heat when going idle
+                onWeaponDeactivated?.Invoke(this);
+                break;
+
+            case SubsystemFunctionalState.Ready:
+                // Add initial heat when becoming ready///////////
+                onWeaponActivated?.Invoke(this);
+                break;
+
+            case SubsystemFunctionalState.Surge:
+                // Surge does not change initial heat baseline
+                break;
+        }
+    }
+
+    public void UpdateDescription()
+    {
+        if (weapon == null || descriptionText == null)
+            return;
+
+        string line1;
+
+        if (weapon.isReloading)
+            line1 = "Reloading...";
+        else
+            line1 = $"Current Clip: {weapon.currentClipAmmo}";
+
+        string line2 = $"Cargo: {weapon.cargoAmmo}";
+
+        descriptionText.text = $"{line1}\n{line2}";
+    }
+
 }

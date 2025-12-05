@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69c1dac297ba0174fa11d051be12f98e, type: 3}
   m_Name: WeaponsHeat
   m_EditorClassIdentifier: Assembly-CSharp::HeatSubsystemData
-  heatPerSecondActive: 1
-  burstHeat: 0.1
-  onlyGenerateWhenEnabled: 0
+  heatPerSecondActive: 0
+  burstHeat: 0.2
+  initialHeat: 6
+  onlyGenerateWhenEnabled: 1
