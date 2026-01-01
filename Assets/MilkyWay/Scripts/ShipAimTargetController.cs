@@ -15,6 +15,7 @@ public class ShipAimTargetController : MonoBehaviour
 
     private float yaw;
     private float pitch;
+    public ShipMovementThirdPerson shipMovement;
 
     void Start()
     {
@@ -38,7 +39,7 @@ public class ShipAimTargetController : MonoBehaviour
     {
         if (!ship) return;
 
-        if (Input.GetKey(KeyCode.Space)) return;
+        if (Input.GetMouseButton(1) || shipMovement.showGUI) return;
 
         // Mouse input
         float mouseX = Input.GetAxis("Mouse X");

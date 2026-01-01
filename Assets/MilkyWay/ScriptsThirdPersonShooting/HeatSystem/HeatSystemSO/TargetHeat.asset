@@ -12,7 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69c1dac297ba0174fa11d051be12f98e, type: 3}
   m_Name: TargetHeat
   m_EditorClassIdentifier: Assembly-CSharp::HeatSubsystemData
-  heatPerSecondActive: -3
-  burstHeat: 0
-  initialHeat: 5
-  surgeMultiplier: 3
+  passiveHeatReady: 6
+  passiveHeatSurge: 12
+  usageHeat: 0

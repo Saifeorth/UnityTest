@@ -15,7 +15,12 @@ public class HeatManager : MonoBehaviour
     [Header("Heat Settings")]
     public float maxHeat = 100f;
     public float passiveCooling = 5f;
-    public float ventCooling = 30f;
+
+    [Header("Venting Settings")]
+    public float manualVentCooling = 30f;   // cooling per second during manual venting
+    public float overheatVentCooling = 50f; // cooling per second during emergency overheat venting
+
+
 
     [Header("Runtime Heat")]
     public float baselineHeat = 0f;
@@ -29,6 +34,10 @@ public class HeatManager : MonoBehaviour
     public Slider baselineHeatSlider;           // Only shows active heat
     public Image totalHeatColor;             // Color changes based on total heat
     public RectTransform totalHeatBar;        // Vertical resized bar
+    public TMPro.TextMeshProUGUI heatLabelText;
+    public TMPro.TextMeshProUGUI heatText;
+    public TMPro.TextMeshProUGUI ventStatusText;
+    public List<Image> heatVisualImages;
     public float totalBarMaxHeight = 200f;    // Adjust based on UI
 
     public static event System.Action OnVentingStart;
@@ -51,14 +60,12 @@ public class HeatManager : MonoBehaviour
     {
         foreach (var s in subsystemStateControllers)
         {
-            s.onSubsystemActivated += OnSubsystemActivated;
-            s.onSubsystemDeactivated += OnSubsystemDeactivated;
+            s.OnFunctionalStateChanged += HandleSubsystemFunctionalChanged;
         }
 
         foreach (var s in weaponSubsystems)
         {
-            s.onWeaponActivated += OnWeaponActivated;
-            s.onWeaponDeactivated += OnWeaponDeactivated;
+            s.OnFunctionalStateChanged += HandleWeaponSubsystemFunctionalChanged;
         }
 
 
@@ -68,14 +75,12 @@ public class HeatManager : MonoBehaviour
     {
         foreach (var s in subsystemStateControllers)
         {
-            s.onSubsystemActivated -= OnSubsystemActivated;
-            s.onSubsystemDeactivated -= OnSubsystemDeactivated;
+            s.OnFunctionalStateChanged -= HandleSubsystemFunctionalChanged;
         }
 
         foreach (var s in weaponSubsystems)
         {
-            s.onWeaponActivated -= OnWeaponActivated;
-            s.onWeaponDeactivated -= OnWeaponDeactivated;
+            s.OnFunctionalStateChanged -= HandleWeaponSubsystemFunctionalChanged;
         }
     }
 
@@ -90,8 +95,11 @@ public class HeatManager : MonoBehaviour
 
         if (isVenting)
         {
-            // Vent only reduces ACTIVE heat
-            activeHeat -= ventCooling * dt;
+            // Determine correct vent cooling
+            float ventRate = (isOverheated) ? overheatVentCooling : manualVentCooling;
+
+            // Reduce active heat
+            activeHeat -= ventRate * dt;
 
             if (activeHeat <= 0)
             {
@@ -127,16 +135,15 @@ public class HeatManager : MonoBehaviour
             HeatSubsystemData hd = subsystem.heatData;
             ////
 
+            //if (subsystem.funcState == SubsystemFunctionalState.Ready)
+            //{
+            //    activeHeat += hd.heatPerSecondActive * dt;
+            //}
 
-            if (subsystem.funcState == SubsystemFunctionalState.Ready)
-            {
-                activeHeat += hd.heatPerSecondActive * dt;
-            }
-
-            if (subsystem.funcState == SubsystemFunctionalState.Surge)
-            {
-                activeHeat += hd.heatPerSecondActive * hd.surgeMultiplier * dt;
-            }
+            //if (subsystem.funcState == SubsystemFunctionalState.Surge)
+            //{
+            //    activeHeat += hd.heatPerSecondActive * hd.passiveHeatSUrge * dt;
+            //}
         }
 
         if (activeHeat < 0) activeHeat = 0;
@@ -150,7 +157,7 @@ public class HeatManager : MonoBehaviour
 
         if (!subsystem.isEnabled) return;
 
-        activeHeat += hd.burstHeat;
+        activeHeat += hd.usageHeat;
 
         if (TotalHeat >= maxHeat)
         {
@@ -167,11 +174,8 @@ public class HeatManager : MonoBehaviour
 
         if (subsystem.funcState == SubsystemFunctionalState.Idle || subsystem.visualState == SubsystemVisualState.Disabled) return;
 
-        if(subsystem.funcState == SubsystemFunctionalState.Ready)
-        activeHeat += hd.burstHeat;
-
-        if(subsystem.funcState == SubsystemFunctionalState.Surge)
-        activeHeat += hd.burstHeat * hd.surgeMultiplier;
+        if(subsystem.funcState == SubsystemFunctionalState.Ready || subsystem.funcState == SubsystemFunctionalState.Surge)
+        activeHeat += hd.usageHeat;
 
         if (TotalHeat >= maxHeat)
         {
@@ -188,11 +192,8 @@ public class HeatManager : MonoBehaviour
 
         if (subsystem.funcState == SubsystemFunctionalState.Idle || subsystem.visualState == SubsystemVisualState.Disabled) return;
 
-        if (subsystem.funcState == SubsystemFunctionalState.Ready)
-            activeHeat += hd.burstHeat;
-
-        if (subsystem.funcState == SubsystemFunctionalState.Surge)
-            activeHeat += hd.burstHeat * hd.surgeMultiplier;
+        if (subsystem.funcState == SubsystemFunctionalState.Ready || subsystem.funcState == SubsystemFunctionalState.Surge)
+            activeHeat += hd.usageHeat;
 
         if (TotalHeat >= maxHeat)
         {
@@ -205,27 +206,57 @@ public class HeatManager : MonoBehaviour
     // BASELINE HEAT EVENTS
     // -------------------------------------------------------------------
 
-    private void OnSubsystemActivated(SubsystemStateController s)
-    {
-        baselineHeat += s.heatData.initialHeat;
-        baselineHeat = Mathf.Clamp(baselineHeat, 0, maxHeat);
-    }
-
-    private void OnSubsystemDeactivated(SubsystemStateController s)
-    {
-        baselineHeat -= s.heatData.initialHeat;
-        baselineHeat = Mathf.Clamp(baselineHeat, 0, maxHeat);
-    }
-
     private void OnWeaponActivated(WeaponSubsystem s)
     {
-        baselineHeat += s.heatData.initialHeat;
+        baselineHeat += s.heatData.passiveHeatReady;
         baselineHeat = Mathf.Clamp(baselineHeat, 0, maxHeat);
     }
 
     private void OnWeaponDeactivated(WeaponSubsystem s)
     {
-        baselineHeat -= s.heatData.initialHeat;
+        baselineHeat -= s.heatData.passiveHeatReady;
+        baselineHeat = Mathf.Clamp(baselineHeat, 0, maxHeat);
+    }
+
+    private void HandleSubsystemFunctionalChanged(SubsystemStateController s, SubsystemFunctionalState st)
+    {
+        switch (st)
+        {
+            case SubsystemFunctionalState.Idle:
+                // remove initial heat
+                baselineHeat -= s.heatData.passiveHeatSurge; // if you still use initialHeat
+                break;
+            case SubsystemFunctionalState.Ready:
+                // add initial heat
+                baselineHeat += s.heatData.passiveHeatReady;
+                break;
+            case SubsystemFunctionalState.Surge:
+                baselineHeat -= s.heatData.passiveHeatReady;
+                baselineHeat += s.heatData.passiveHeatSurge;
+                // no change to baseline initial heat
+                break;
+        }
+        baselineHeat = Mathf.Clamp(baselineHeat, 0, maxHeat);
+    }
+
+    private void HandleWeaponSubsystemFunctionalChanged(WeaponSubsystem s, SubsystemFunctionalState st)
+    {
+        switch (st)
+        {
+            case SubsystemFunctionalState.Idle:
+                // remove initial heat
+                baselineHeat -= s.heatData.passiveHeatSurge; // if you still use initialHeat
+                break;
+            case SubsystemFunctionalState.Ready:
+                // add initial heat
+                baselineHeat += s.heatData.passiveHeatReady;
+                break;
+            case SubsystemFunctionalState.Surge:
+                baselineHeat -= s.heatData.passiveHeatReady;
+                baselineHeat += s.heatData.passiveHeatSurge;
+                // no change to baseline initial heat
+                break;
+        }
         baselineHeat = Mathf.Clamp(baselineHeat, 0, maxHeat);
     }
 
@@ -272,16 +303,66 @@ public class HeatManager : MonoBehaviour
             totalHeatBar.sizeDelta = size;
         }
 
-        // COLOR
-        if (totalHeatColor)
+        // Update heatText
+        if (heatText)
         {
-            Color target =
-                TotalHeat < maxHeat * 0.33f ? Color.green :
-                TotalHeat < maxHeat * 0.66f ? Color.yellow :
-                Color.red;
-
-            totalHeatColor.DOColor(target, 0.25f);
+            float displayedHeat = Mathf.Clamp(TotalHeat, 0f, 100f);
+            heatText.text = $"{displayedHeat:F1}°C";
         }
+
+        // Determine ventStatusText
+        if (ventStatusText)
+        {
+            if (isOverheated && isVenting)
+                ventStatusText.text = "EMRG VENT";
+            else if (isVenting)
+                ventStatusText.text = "VENTING";
+            else if (TotalHeat >= maxHeat * 0.6f)
+                ventStatusText.text = "[V] VENT";
+            else
+                ventStatusText.text = "";
+        }
+
+        // Update colors
+        Color color = Color.white;
+
+        if (isOverheated && isVenting)
+            color = Color.red;
+        else if (isVenting)
+        {
+            color = (TotalHeat >= maxHeat * 0.6f) ? Color.yellow : Color.white;
+        }
+        else
+        {
+            color = (TotalHeat >= maxHeat * 0.6f) ? Color.yellow : Color.white;
+        }
+
+        // Apply color to all images and heatText
+        foreach (var img in heatVisualImages)
+            if (img != null)
+                img.color = color;
+
+        if(heatLabelText)
+            heatLabelText.color = color;
+
+        if (heatText)
+            heatText.color = color;
+
+        if (ventStatusText)
+            ventStatusText.color = (isOverheated || isVenting) ? Color.red : color;
+
+
+
+        //// COLOR
+        //if (totalHeatColor)
+        //{
+        //    Color target =
+        //        TotalHeat < maxHeat * 0.33f ? Color.green :
+        //        TotalHeat < maxHeat * 0.66f ? Color.yellow :
+        //        Color.red;
+
+        //    totalHeatColor.DOColor(target, 0.25f);
+        //}
     }
 
     private void OnGUI()
@@ -290,7 +371,7 @@ public class HeatManager : MonoBehaviour
 
         if (!showHeatGUI) return;
 
-        int width = 320;
+        int width = 460;
         int height = 500;
 
         GUILayout.BeginArea(new Rect(Screen.width - width - 20, 70, width, height), heatBoxStyle);
@@ -312,14 +393,15 @@ public class HeatManager : MonoBehaviour
         GUILayout.Label($"Active: {activeHeat:F1}", heatLabelStyle);
         GUI.color = Color.white;
 
-        maxHeat = LabeledSlider("Max Heat", maxHeat, 10f, 300f);
-        passiveCooling = LabeledSlider("Passive Cooling", passiveCooling, 0f, 20f);
-        ventCooling = LabeledSlider("Vent Cooling", ventCooling, 0f, 50f);
+        maxHeat = LabeledInputField("Max Heat", maxHeat, 10f, 300f, 20);
+        passiveCooling = LabeledInputField("Passive Cooling", passiveCooling, 0f, 20f, 20);
+        manualVentCooling = LabeledInputField("Manual Vent Cooling", manualVentCooling, 0f, 50f, 20);
+        overheatVentCooling = LabeledInputField("EMRG Vent Cooling", overheatVentCooling, 0f, 50f, 20);
 
         GUILayout.EndVertical();
         GUILayout.Space(10);
 
-        GUILayout.Label("SUBSYSTEM HEAT", heatHeaderStyle);
+        GUILayout.Label("SHIP SYSTEM HEAT", heatHeaderStyle);
 
         foreach (var s in subsystemStateControllers)
         {
@@ -330,22 +412,48 @@ public class HeatManager : MonoBehaviour
             GUILayout.Label("Subsystem: " + s.name, heatLabelStyle);
             GUILayout.Space(5);
 
-            s.heatData.initialHeat =
-               LabeledSlider("Initial Heat",
-               s.heatData.initialHeat, 0f, 20f);
+            s.heatData.passiveHeatReady =
+               LabeledInputField("Passive Heat Ready",
+               s.heatData.passiveHeatReady, 0f, 20f, 20);
 
-            s.heatData.heatPerSecondActive =
-                LabeledSlider("Heat / sec Active",
-                s.heatData.heatPerSecondActive, 0f, 50f);
-
-            s.heatData.burstHeat =
-                LabeledSlider("Burst Heat",
-                s.heatData.burstHeat, 0f, 20f);
+            s.heatData.usageHeat =
+                LabeledInputField("Usage Heat",
+                s.heatData.usageHeat, 0f, 20f, 20);
 
 
-            s.heatData.surgeMultiplier =
-                LabeledSlider("Surge Multiplier",
-                s.heatData.surgeMultiplier, 0f, 20f);
+            s.heatData.passiveHeatSurge =
+                LabeledInputField("Passive Heat Surge",
+                s.heatData.passiveHeatSurge, 0f, 20f,20);
+
+            GUILayout.EndVertical();
+            GUILayout.Space(10);
+        }
+
+        GUILayout.Label("WEAPON SYSTEM HEAT", heatHeaderStyle);
+
+        foreach (var s in weaponSubsystems)
+        {
+            if (s == null || s.heatData == null) continue;
+
+            GUILayout.BeginVertical("box");
+
+            GUILayout.Label("Subsystem: " + s.name, heatLabelStyle);
+            GUILayout.Space(5);
+
+            s.heatData.passiveHeatReady =
+               LabeledInputField("Passive Heat Ready",
+               s.heatData.passiveHeatReady, 0f, 200f, 20);
+
+            s.heatData.passiveHeatSurge =
+                LabeledInputField("Passive Heat Surge",
+                s.heatData.passiveHeatSurge, 0f, 200f, 20);
+
+            s.heatData.usageHeat =
+                LabeledInputField("Usage Heat",
+                s.heatData.usageHeat, 0f, 200f, 20);
+
+
+
 
             GUILayout.EndVertical();
             GUILayout.Space(10);
@@ -394,6 +502,36 @@ public class HeatManager : MonoBehaviour
         if (n < 0.33f) return Color.green;
         if (n < 0.66f) return Color.yellow;
         return Color.red;
+    }
+
+    private float LabeledInputField(string label, float current, float min, float max, int fontSize = 16)
+    {
+        // Create styles
+        GUIStyle labelStyle = new GUIStyle(GUI.skin.label);
+        labelStyle.fontSize = fontSize;
+
+        GUIStyle textFieldStyle = new GUIStyle(GUI.skin.textField);
+        textFieldStyle.fontSize = fontSize;
+
+        GUILayout.BeginHorizontal();
+
+        GUILayout.Label(label, labelStyle, GUILayout.Width(180));
+
+        string newVal = GUILayout.TextField(current.ToString("F2"),
+                                            textFieldStyle,
+                                            GUILayout.Width(80));
+
+        float parsed;
+        if (float.TryParse(newVal, out parsed))
+        {
+            current = Mathf.Clamp(parsed, min, max);
+        }
+
+        GUILayout.Label($"[{min} - {max}]", labelStyle, GUILayout.Width(120));
+
+        GUILayout.EndHorizontal();
+
+        return current;
     }
 
 

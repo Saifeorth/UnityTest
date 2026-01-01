@@ -12,7 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69c1dac297ba0174fa11d051be12f98e, type: 3}
   m_Name: RadarHeat
   m_EditorClassIdentifier: Assembly-CSharp::HeatSubsystemData
-  heatPerSecondActive: 0.5
-  burstHeat: 0
-  initialHeat: 10
-  surgeMultiplier: 1.25
+  passiveHeatReady: 10
+  passiveHeatSurge: 20
+  usageHeat: 0

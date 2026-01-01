@@ -4,8 +4,7 @@ using UnityEngine;
 public class HeatSubsystemData : ScriptableObject
 {
     [Header("Heat Generation")]
-    public float heatPerSecondActive = 0f;     // continuous heat
-    public float burstHeat = 0f;               // per fire or per action
-    public float initialHeat = 0f;
-    public float surgeMultiplier = 1f;        // multiplier when in surge mode
+    public float passiveHeatReady = 0f;
+    public float passiveHeatSurge = 1f;
+    public float usageHeat = 0f;   
 }

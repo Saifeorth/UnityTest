@@ -12,11 +12,11 @@ public class SubsystemButton : MonoBehaviour,
     {
         bool rightHeld = Input.GetMouseButton(1);
 
-        // --- Apply Hover Visuals Every Frame ---
+        // Always tell controller whether we're hovering and if RMB is held so it can show hover visuals.
         controller.SetHover(isHovering, rightHeld);
 
-        // --- VISUAL STATE CHANGE (RMB + K) ---
-        if (rightHeld && Input.GetKeyDown(KeyCode.K) && isHovering)
+        // VISUAL STATE CHANGE (RMB + K) while hovering
+        if (rightHeld && isHovering && Input.GetKeyDown(KeyCode.K))
         {
             controller.CycleVisualState();
         }
@@ -32,21 +32,13 @@ public class SubsystemButton : MonoBehaviour,
         isHovering = false;
     }
 
-    // --- FUNCTIONAL STATE CHANGE (RMB + LMB) ---
+    // FUNCTIONAL STATE CHANGE (RMB + LMB) while hovering
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (eventData.button == PointerEventData.InputButton.Left &&
-            Input.GetMouseButton(1))
+        if (eventData.button == PointerEventData.InputButton.Left && Input.GetMouseButton(1))
         {
-            // If NOT selected, this click ONLY selects — no transition
-            if (!controller.isSelected)
-            {
-                SubsystemSelectionManager.Instance.Select(controller);
-                return;
-            }
-
-            // If already selected, THIS click advances functional state
-            controller.AdvanceFunctionalState();
+            // Immediately change functional state (overwrites any ongoing transition).
+            controller.AdvanceFunctionalStateImmediate();
         }
     }
 }

@@ -42,6 +42,8 @@ public class WeaponSubsystem : MonoBehaviour
     public bool isSelected = false;
     private bool isTransitioning = false;
 
+    public event Action<WeaponSubsystem, SubsystemFunctionalState> OnFunctionalStateChanged;
+
     private Coroutine stateRoutine;
 
     private RectTransform rect;
@@ -53,9 +55,6 @@ public class WeaponSubsystem : MonoBehaviour
     public bool isVenting = false;     // when true → everything is paused
     private bool cachedIsSelected = false;
     private SubsystemFunctionalState cachedFuncState;
-
-    public Action<WeaponSubsystem> onWeaponActivated;
-    public Action<WeaponSubsystem> onWeaponDeactivated;
 
 
 
@@ -72,6 +71,8 @@ public class WeaponSubsystem : MonoBehaviour
         HeatManager.OnVentingStart -= HandleVentingStart;
         HeatManager.OnVentingStop -= HandleVentingStop;
     }
+
+   
 
     private void Start()
     {
@@ -101,9 +102,9 @@ public class WeaponSubsystem : MonoBehaviour
         switch (funcState)
         {
             case SubsystemFunctionalState.Idle: return "0°";
-            case SubsystemFunctionalState.Ready: return $"{(heatData.initialHeat + heatData.burstHeat)}°";
+            case SubsystemFunctionalState.Ready: return $"{heatData.passiveHeatReady}°";
             case SubsystemFunctionalState.Surge:
-                float surgeHeat = heatData.initialHeat + (heatData.burstHeat * heatData.surgeMultiplier);
+                float surgeHeat = heatData.passiveHeatSurge;
                 return $"{surgeHeat}°";
         }
         return "0°";
@@ -227,19 +228,42 @@ public class WeaponSubsystem : MonoBehaviour
     // --------------------------------------------------------
     public void AdvanceFunctionalState()
     {
-        if (isVenting) return;               // ← block everything
+        // keep existing guard if you want keyboard-only or selection-only behavior
+        // This method can be used for non-immediate (if you want) — but we'll
+        // prefer AdvanceFunctionalStateImmediate() in UI now.
+        if (isVenting) return;
         if (!isSelected) return;
         if (visualState == SubsystemVisualState.Disabled) return;
         if (isTransitioning) return;
 
-        SubsystemFunctionalState next = funcState switch
-        {
-            SubsystemFunctionalState.Idle => SubsystemFunctionalState.Ready,
-            SubsystemFunctionalState.Ready => SubsystemFunctionalState.Surge,
-            SubsystemFunctionalState.Surge => SubsystemFunctionalState.Idle,
-            _ => SubsystemFunctionalState.Idle
-        };
+        SubsystemFunctionalState next = GetNextFunctionalState(funcState);
+        StartFunctionalTransition(next);
+    }
 
+    public void AdvanceFunctionalStateImmediate()
+    {
+        if (isVenting) return;
+        if (visualState == SubsystemVisualState.Disabled) return;
+        // We allow immediate toggles regardless of isSelected (user requested "on hover"),
+        // but if you want only when selected, uncomment:
+        // if (!isSelected) return;
+
+        SubsystemFunctionalState next = GetNextFunctionalState(funcState);
+
+        // Stop any running transition
+        if (stateRoutine != null)
+            StopCoroutine(stateRoutine);
+
+        // Immediately set functional state to next
+        funcState = next;
+
+
+        // Update visuals/text instantly to show the new state and 0%
+        UpdateStateInstant();
+        ApplyVisualState();
+        UpdateHeatText();
+
+        // Start percentage animation from 0 -> 100 for the new state
         StartFunctionalTransition(next);
     }
 
@@ -251,18 +275,29 @@ public class WeaponSubsystem : MonoBehaviour
         stateRoutine = StartCoroutine(FunctionalTransitionRoutine(next));
     }
 
+    private SubsystemFunctionalState GetNextFunctionalState(SubsystemFunctionalState current)
+    {
+        return current switch
+        {
+            SubsystemFunctionalState.Idle => SubsystemFunctionalState.Ready,
+            SubsystemFunctionalState.Ready => SubsystemFunctionalState.Surge,
+            SubsystemFunctionalState.Surge => SubsystemFunctionalState.Idle,
+            _ => SubsystemFunctionalState.Idle
+        };
+    }
+
+
     IEnumerator FunctionalTransitionRoutine(SubsystemFunctionalState next)
     {
+        // Animate percentage from 0 -> 100 while showing the "next" label
         isTransitioning = true;
 
         float duration = 0.5f;
         float timer = 0f;
 
-        stateText.transform.DOPunchScale(Vector3.one * 0.15f, 0.35f);
-        heatText.transform.DOPunchScale(Vector3.one * 0.15f, 0.35f);
-
         Color targetColor = GetStateColor(next);
 
+        // Start at 0% with the "next" label
         while (timer < duration)
         {
             timer += Time.deltaTime;
@@ -277,9 +312,12 @@ public class WeaponSubsystem : MonoBehaviour
             yield return null;
         }
 
+        // At the end of the animation ensure the functional state is applied (safe)
         funcState = next;
 
-        ApplyFunctionalHeatChange(next);
+        // Notify subscribers that a (final) state set happened at end-of-transition too
+        OnFunctionalStateChanged?.Invoke(this, funcState);
+
 
         UpdateStateInstant();
         ApplyVisualState();
@@ -400,30 +438,6 @@ public class WeaponSubsystem : MonoBehaviour
         UpdateStateInstant();
         ApplyVisualState();
         UpdateHeatText();
-    }
-
-    private void ApplyFunctionalHeatChange(SubsystemFunctionalState newState)
-    {
-        // Disabled subsystems do nothing
-        if (visualState == SubsystemVisualState.Disabled)
-            return;
-
-        switch (newState)
-        {
-            case SubsystemFunctionalState.Idle:
-                // Remove initial heat when going idle
-                onWeaponDeactivated?.Invoke(this);
-                break;
-
-            case SubsystemFunctionalState.Ready:
-                // Add initial heat when becoming ready///////////
-                onWeaponActivated?.Invoke(this);
-                break;
-
-            case SubsystemFunctionalState.Surge:
-                // Surge does not change initial heat baseline
-                break;
-        }
     }
 
     public void UpdateDescription()

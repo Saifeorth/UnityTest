@@ -38,15 +38,7 @@ public class WeaponUIButton : MonoBehaviour, IPointerEnterHandler, IPointerExitH
         if (eventData.button == PointerEventData.InputButton.Left &&
             Input.GetMouseButton(1))
         {
-            // If NOT selected, this click ONLY selects — no transition
-            if (!controller.isSelected)
-            {
-                weaponManager.Select(controller);
-                return;
-            }
-
-            // If already selected, THIS click advances functional state
-            controller.AdvanceFunctionalState();
+            controller.AdvanceFunctionalStateImmediate();
         }
     }
 

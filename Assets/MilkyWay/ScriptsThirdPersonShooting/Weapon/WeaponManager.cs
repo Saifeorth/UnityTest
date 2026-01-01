@@ -13,12 +13,13 @@ public class WeaponManager : MonoBehaviour
 
     public WeaponSubsystem[] subsystems;
 
-
     void Start()
     {
         mainCam = Camera.main;
-    }
 
+        // Optionally set default selection to index 0:
+        // if (subsystems != null && subsystems.Length > 0) Select(subsystems[0]);
+    }
 
     void Update()
     {
@@ -38,41 +39,9 @@ public class WeaponManager : MonoBehaviour
         }
     }
 
-
-    void HandleFiring()
-    {
-        if (Input.GetMouseButton(1) || playerShip.showGUI) return; 
-
-
-        if (Input.GetMouseButton(0))
-            FireSelectedWeapon();
-    }
-
-    void FireSelectedWeapon()
-    {
-        if (currentSelected ==null)
-            return;
-
-        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f));
-        Vector3 target = ray.origin + ray.direction * 1000f;
-
-        if (Physics.Raycast(ray, out RaycastHit hit, 2000f, aimLayerMask, QueryTriggerInteraction.Ignore))
-            target = hit.point;
-
-        if(currentSelected.funcState == SubsystemFunctionalState.Idle || currentSelected.visualState == SubsystemVisualState.Disabled || currentSelected.isVenting)
-            return;
-
-        if (currentSelected.weapon.Fire(target))
-        {
-            heatManager.AddBurstHeat(currentSelected);
-        }
-
-        currentSelected.UpdateDescription();
-    }
-
     public void Select(WeaponSubsystem weaponSubsystem)
     {
-        // Prevent double selections
+        // Prevent re-selecting same
         if (currentSelected == weaponSubsystem)
             return;
 
@@ -81,7 +50,39 @@ public class WeaponManager : MonoBehaviour
             currentSelected.Deselect();
 
         currentSelected = weaponSubsystem;
+        currentSelected.ApplySelectedState();
 
-        weaponSubsystem.ApplySelectedState();
+        // Update description on selection
+        currentSelected.UpdateDescription();
+    }
+
+    void HandleFiring()
+    {
+        if (Input.GetMouseButton(1) || playerShip.showGUI) return;
+
+        if (Input.GetMouseButton(0))
+            FireSelectedWeapon();
+    }
+
+    void FireSelectedWeapon()
+    {
+        if (currentSelected == null)
+            return;
+
+        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f));
+        Vector3 target = ray.origin + ray.direction * 1000f;
+
+        if (Physics.Raycast(ray, out RaycastHit hit, 2000f, aimLayerMask, QueryTriggerInteraction.Ignore))
+            target = hit.point;
+
+        if (currentSelected.funcState == SubsystemFunctionalState.Idle || currentSelected.visualState == SubsystemVisualState.Disabled || currentSelected.isVenting)
+            return;
+
+        if (currentSelected.weapon.Fire(target))
+        {
+            heatManager.AddBurstHeat(currentSelected);
+        }
+
+        currentSelected.UpdateDescription();
     }
 }

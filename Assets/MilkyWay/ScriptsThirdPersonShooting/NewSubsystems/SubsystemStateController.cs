@@ -33,25 +33,23 @@ public class SubsystemStateController : MonoBehaviour
     public TextMeshProUGUI titleText;
     public TextMeshProUGUI stateText;
     public TextMeshProUGUI heatText;
-    public TextMeshProUGUI descriptionText;
 
     // ---------------- Colors ----------------
-    public Color normalColor = new(0.84f, 0.93f, 0.92f);
-    public Color hoverColor = Color.black;
-
+    public Color normalColor = new Color(0.84f, 0.93f, 0.92f);
+    public Color hoverTopColor = Color.black;
     public Color titleHover = Color.white;
 
-    public Color readyColor = new(0f, 1f, 0.05f);
-    public Color surgeColor = new(1f, 0.8f, 0f);
+    public Color readyColor = new Color(0f, 1f, 0.05f);
+    public Color surgeColor = new Color(1f, 0.8f, 0f);
 
-    private readonly Color damagedColor = new(1f, 0.8f, 0f); // yellow
-    private readonly Color disabledColor = new(1f, 0f, 0f);  // red
+    private readonly Color damagedColor = new Color(1f, 0.8f, 0f);
+    private readonly Color disabledColor = new Color(1f, 0f, 0f);
 
     // ---------------- Runtime ----------------
     public SubsystemFunctionalState funcState = SubsystemFunctionalState.Idle;
     public SubsystemVisualState visualState = SubsystemVisualState.Normal;
 
-    public bool isSelected = false;
+    private bool isHovering = false;
     private bool isTransitioning = false;
 
     private Coroutine stateRoutine;
@@ -63,16 +61,12 @@ public class SubsystemStateController : MonoBehaviour
     private Vector2 bottomOriginalSize;
 
     public bool isVenting = false;     // when true → everything is paused
-    private bool cachedIsSelected = false;
     private SubsystemFunctionalState cachedFuncState;
 
-    public Action<SubsystemStateController> onSubsystemActivated;
-    public Action<SubsystemStateController> onSubsystemDeactivated;
-
-
+    // Event: fired immediately when functional state changes (Idle/Ready/Surge)
+    public event Action<SubsystemStateController, SubsystemFunctionalState> OnFunctionalStateChanged;
 
     // --------------------------------------------------------
-
     private void OnEnable()
     {
         HeatManager.OnVentingStart += HandleVentingStart;
@@ -88,49 +82,48 @@ public class SubsystemStateController : MonoBehaviour
     private void Start()
     {
         rect = GetComponent<RectTransform>();
-        originalSize = rect.sizeDelta;
+        originalSize = rect != null ? rect.sizeDelta : Vector2.zero;
 
-        bottomRect = bottomLabelImage.GetComponent<RectTransform>();
-        bottomOriginalSize = bottomRect.sizeDelta;
-
-        titleText.text = name;
-
-        if (descriptionText != null)
+        if (bottomLabelImage != null)
         {
-            var c = descriptionText.color;
-            descriptionText.color = new Color(c.r, c.g, c.b, 0f);
+            bottomRect = bottomLabelImage.GetComponent<RectTransform>();
+            if (bottomRect != null) bottomOriginalSize = bottomRect.sizeDelta;
         }
+
+        if (titleText != null) titleText.text = name;
 
         ApplyVisualState();
         UpdateStateInstant();
     }
 
     // --------------------------------------------------------
-    // HEAT TEXT
+    // HEAT TEXT helpers
     // --------------------------------------------------------
-    private string GetHeatStringFunctional()
+
+    private string GetHeatStringFunctional(SubsystemFunctionalState s)
     {
-        switch (funcState)
+        // exact same logic as helper but ensures using provided s
+        switch (s)
         {
             case SubsystemFunctionalState.Idle: return "0°";
-            case SubsystemFunctionalState.Ready: return $"{(heatData.initialHeat + heatData.burstHeat)}°";
+            case SubsystemFunctionalState.Ready:
+                return heatData != null ? $"{Mathf.RoundToInt(heatData.passiveHeatReady)}°" : "0°";
             case SubsystemFunctionalState.Surge:
-                float surgeHeat = heatData.initialHeat + (heatData.burstHeat * heatData.surgeMultiplier);
-                return $"{surgeHeat}°";
+                return heatData != null ? $"{Mathf.RoundToInt(heatData.passiveHeatSurge)}°" : "0°";
         }
         return "0°";
     }
 
     private string GetHeatString()
     {
-        if (visualState == SubsystemVisualState.Disabled)
-            return "";
+        if (visualState == SubsystemVisualState.Disabled) return "";
 
-        return GetHeatStringFunctional();
+        return GetHeatStringFunctional(funcState);
     }
 
     private void UpdateHeatText()
     {
+        if (heatText == null) return;
         heatText.text = GetHeatString();
     }
 
@@ -150,182 +143,81 @@ public class SubsystemStateController : MonoBehaviour
                 break;
 
             case SubsystemVisualState.Normal:
-                ApplyNormalOrSelectedVisuals();
+                ApplyNormalVisuals();
                 break;
         }
     }
 
-    private void ApplyNormalOrSelectedVisuals()
+    private void ApplyNormalVisuals()
     {
-        if (isSelected)
-        {
-            topLabelImage.color = hoverColor;
-            titleText.color = Color.white;
-            bgImage.color = normalColor;
-
-            if (descriptionText != null)
-                descriptionText.alpha = 1f;
-        }
-        else
-        {
-            topLabelImage.color = normalColor;
-            titleText.color = Color.black;
-            bgImage.color = normalColor;
-
-            if (descriptionText != null)
-                descriptionText.alpha = 0f;
-        }
+        bgImage.color = normalColor;
+        topLabelImage.color = normalColor;
+        if (titleText != null) titleText.color = Color.black;
+        // no description UI per spec
     }
 
     private void ApplyDamagedVisuals()
     {
         bgImage.color = damagedColor;
         topLabelImage.color = damagedColor;
-        titleText.color = Color.black;
-
-        descriptionText.alpha = 0f;
-        heatText.text = GetHeatString();
+        if (titleText != null) titleText.color = Color.black;
+        UpdateHeatText();
     }
 
     private void ApplyDisabledVisuals()
     {
         bgImage.color = disabledColor;
         topLabelImage.color = disabledColor;
-        titleText.color = Color.black;
-        stateText.text = "DISABLED";
-        heatText.text = "";
+        if (titleText != null) titleText.color = Color.black;
+        if (stateText != null) stateText.text = "DISABLED";
+        if (heatText != null) heatText.text = "";
     }
 
     // --------------------------------------------------------
-    // SELECTION
+    // HOVER visuals (called every frame by SubsystemButton.Update)
     // --------------------------------------------------------
-    public void ApplySelectedState()
+    public void SetHover(bool hovering, bool rightHeld)
     {
-        if (isVenting) return;             // ← NEW
-        if (visualState == SubsystemVisualState.Disabled)
-            return;
+        isHovering = hovering;
 
-        isSelected = true;
+        // Venting blocks hover visuals
+        if (isVenting) return;
 
-        float newHeight = originalSize.y * 1.5f;
-        rect.DOSizeDelta(new(originalSize.x, newHeight), 0.25f).SetEase(Ease.OutBack);
-
-        float bottomHeight = bottomOriginalSize.y * 2f;
-        bottomRect.DOSizeDelta(new(bottomOriginalSize.x, bottomHeight), 0.25f);
-
-        ApplyVisualState();
-        UpdateHeatText();
-    }
-
-    public void Deselect()
-    {
-        isSelected = false;
-
-        rect.DOSizeDelta(originalSize, 0.25f);
-        bottomRect.DOSizeDelta(bottomOriginalSize, 0.25f);
-
-        ApplyVisualState();
-        UpdateHeatText();
-    }
-
-    // --------------------------------------------------------
-    // FUNCTIONAL STATE MACHINE
-    // --------------------------------------------------------
-    public void AdvanceFunctionalState()
-    {
-        if (isVenting) return;               // ← block everything
-        if (!isSelected) return;
-        if (visualState == SubsystemVisualState.Disabled) return;
-        if (isTransitioning) return;
-
-        SubsystemFunctionalState next = funcState switch
-        {
-            SubsystemFunctionalState.Idle => SubsystemFunctionalState.Ready,
-            SubsystemFunctionalState.Ready => SubsystemFunctionalState.Surge,
-            SubsystemFunctionalState.Surge => SubsystemFunctionalState.Idle,
-            _ => SubsystemFunctionalState.Idle
-        };
-
-        StartFunctionalTransition(next);
-    }
-
-    private void StartFunctionalTransition(SubsystemFunctionalState next)
-    {
-        if (stateRoutine != null)
-            StopCoroutine(stateRoutine);
-
-        stateRoutine = StartCoroutine(FunctionalTransitionRoutine(next));
-    }
-
-    IEnumerator FunctionalTransitionRoutine(SubsystemFunctionalState next)
-    {
-        isTransitioning = true;
-
-        float duration = 0.5f;
-        float timer = 0f;
-
-        stateText.transform.DOPunchScale(Vector3.one * 0.15f, 0.35f);
-        heatText.transform.DOPunchScale(Vector3.one * 0.15f, 0.35f);
-
-        Color targetColor = GetStateColor(next);
-
-        while (timer < duration)
-        {
-            timer += Time.deltaTime;
-            float p = Mathf.Clamp01(timer / duration) * 100f;
-
-            stateText.color = targetColor;
-            heatText.color = targetColor;
-
-            stateText.text = $"{next.ToString().ToUpper()} {Mathf.RoundToInt(p)}%";
-            heatText.text = GetHeatStringFunctional();
-
-            yield return null;
-        }
-
-        funcState = next;
-
-        ApplyFunctionalHeatChange(next);
-
-        UpdateStateInstant();
-        ApplyVisualState();
-        UpdateHeatText();
-
-        isTransitioning = false;
-    }
-
-    private void UpdateStateInstant()
-    {
+        // If disabled visual skin, do not show hover previews (but still allow visual cycling via K)
         if (visualState == SubsystemVisualState.Disabled)
         {
-            stateText.text = "DISABLED";
-            heatText.text = "";
+            // keep disabled visuals
+            ApplyVisualState();
             return;
         }
 
-        stateText.text = funcState.ToString().ToUpper();
-        stateText.color = GetStateColor(funcState);
-        heatText.text = GetHeatString();
-        heatText.color = GetStateColor(funcState);
-    }
-
-    private Color GetStateColor(SubsystemFunctionalState state)
-    {
-        return state switch
+        // If RMB not held, revert visuals to current visual state
+        if (!rightHeld)
         {
-            SubsystemFunctionalState.Ready => readyColor,
-            SubsystemFunctionalState.Surge => surgeColor,
-            _ => Color.white
-        };
+            ApplyVisualState();
+            return;
+        }
+
+        // RMB held: preview hover top bar when hovering
+        if (isHovering)
+        {
+            topLabelImage.color = hoverTopColor;
+            if (titleText != null) titleText.color = titleHover;
+        }
+        else
+        {
+            ApplyVisualState();
+        }
     }
 
     // --------------------------------------------------------
-    // DEBUG VISUAL CYCLER (RMB + K)
+    // VISUAL STATE CYCLE (RMB + K) while hovering
     // --------------------------------------------------------
     public void CycleVisualState()
     {
-        if (isTransitioning) return;
+        if (isVenting) return; // ignore while venting
 
+        // Cycle even when visualState == Disabled (user requested hover-based cycling)
         visualState = visualState switch
         {
             SubsystemVisualState.Normal => SubsystemVisualState.Damaged,
@@ -338,96 +230,148 @@ public class SubsystemStateController : MonoBehaviour
         UpdateStateInstant();
     }
 
-    #region HOVER
-    public void SetHover(bool isHovering, bool rightHeld)
+    // --------------------------------------------------------
+    // FUNCTIONAL STATE CHANGE (RMB + LMB while hovering)
+    // - Immediate change: set new functional state immediately, notify HeatManager,
+    //   then start percent animation from 0 → 100. If a new request arrives mid-animation,
+    //   it cancels and restarts (overwrite).
+    // --------------------------------------------------------
+    public void AdvanceFunctionalStateImmediate()
     {
         if (isVenting) return;
-        if (visualState == SubsystemVisualState.Disabled)
-            return;
+        if (!isHovering) return;                          // only while hovering
+        if (visualState == SubsystemVisualState.Disabled) return;
 
-        // If right-click NOT held, simply apply current visual state
-        if (!rightHeld)
+        // Determine next functional state relative to current funcState (works regardless of transition)
+        SubsystemFunctionalState next = funcState switch
         {
-            if (!isSelected)
-                ApplyVisualState();
-            return;
-        }
+            SubsystemFunctionalState.Idle => SubsystemFunctionalState.Ready,
+            SubsystemFunctionalState.Ready => SubsystemFunctionalState.Surge,
+            SubsystemFunctionalState.Surge => SubsystemFunctionalState.Idle,
+            _ => SubsystemFunctionalState.Idle
+        };
 
-        // ----- Right-click held -----
-        // Hover highlight should not override visual state permanently
-        if (!isSelected && isHovering)
-        {
-            topLabelImage.color = hoverColor;
-            titleText.color = titleHover;
-        }
-        else
-        {
-            ApplyVisualState();
-        }
+        // Immediately set functional state and notify HeatManager BEFORE animation
+        funcState = next;
+        OnFunctionalStateChanged?.Invoke(this, funcState);
+
+        // Stop current animation and start a fresh one
+        if (stateRoutine != null) StopCoroutine(stateRoutine);
+        stateRoutine = StartCoroutine(FunctionalProgressRoutine(funcState));
     }
-    #endregion
 
+    // This coroutine purely animates the percent display (0 → 100%) and updates the heat text/color.
+    IEnumerator FunctionalProgressRoutine(SubsystemFunctionalState forState)
+    {
+        isTransitioning = true;
+
+        float duration = 0.5f;
+        float timer = 0f;
+
+        // small UX punch
+        //if (stateText != null) stateText.transform.DOPunchScale(Vector3.one * 0.12f, 0.35f, 8, 1f);
+        //if (heatText != null) heatText.transform.DOPunchScale(Vector3.one * 0.12f, 0.35f, 8, 1f);
+
+        Color targetColor = GetStateColor(forState);
+
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+            float p = Mathf.Clamp01(timer / duration) * 100f;
+
+            if (stateText != null)
+            {
+                stateText.color = targetColor;
+                stateText.text = $"{forState.ToString().ToUpper()} {Mathf.RoundToInt(p)}%";
+            }
+
+            if (heatText != null)
+            {
+                heatText.color = targetColor;
+                heatText.text = GetHeatStringFunctional(forState);
+            }
+
+            yield return null;
+        }
+
+        // end-of-animation: ensure proper instant text
+        UpdateStateInstant();
+
+        isTransitioning = false;
+        stateRoutine = null;
+    }
+
+    // --------------------------------------------------------
+    // Update display instantly to reflect current funcState/visualState
+    // --------------------------------------------------------
+    private void UpdateStateInstant()
+    {
+        // Visual disabled overrides everything display-wise
+        if (visualState == SubsystemVisualState.Disabled)
+        {
+            if (stateText != null) stateText.text = "DISABLED";
+            if (heatText != null) heatText.text = "";
+            ApplyVisualState();
+            return;
+        }
+
+        // Normal/damaged: show functional state & heat
+        if (stateText != null)
+        {
+            stateText.text = funcState.ToString().ToUpper();
+            stateText.color = GetStateColor(funcState);
+        }
+
+        if (heatText != null)
+        {
+            heatText.text = GetHeatStringFunctional(funcState);
+            heatText.color = GetStateColor(funcState);
+        }
+
+        ApplyVisualState();
+    }
+
+    private Color GetStateColor(SubsystemFunctionalState state)
+    {
+        return state switch
+        {
+            SubsystemFunctionalState.Ready => readyColor,
+            SubsystemFunctionalState.Surge => surgeColor,
+            _ => Color.white
+        };
+    }
+
+   
+
+    // --------------------------------------------------------
+    // VENTING handlers (block interactions)
+    // --------------------------------------------------------
     private void HandleVentingStart()
     {
         if (isVenting) return;
-
         isVenting = true;
 
-        // Cache states so we can restore when venting ends
-        cachedIsSelected = isSelected;
+        // Cache functional state so we can restore it
         cachedFuncState = funcState;
 
-        // Stop transitions
-        if (stateRoutine != null)
-            StopCoroutine(stateRoutine);
-
+        // Stop any running progress coroutine
+        if (stateRoutine != null) StopCoroutine(stateRoutine);
+        stateRoutine = null;
         isTransitioning = false;
 
-        // Freeze visuals exactly as they are
+        // freeze display
         ApplyVisualState();
         UpdateStateInstant();
-        UpdateHeatText();
     }
 
     private void HandleVentingStop()
     {
         isVenting = false;
 
-        // Restore previous selection
-        if (cachedIsSelected)
-            ApplySelectedState();
-        else
-            Deselect();
-
-        // Restore functional state
+        // restore functional state
         funcState = cachedFuncState;
 
         UpdateStateInstant();
         ApplyVisualState();
-        UpdateHeatText();
-    }
-
-    private void ApplyFunctionalHeatChange(SubsystemFunctionalState newState)
-    {
-        // Disabled subsystems do nothing
-        if (visualState == SubsystemVisualState.Disabled)
-            return;
-
-        switch (newState)
-        {
-            case SubsystemFunctionalState.Idle:
-                // Remove initial heat when going idle
-                onSubsystemDeactivated?.Invoke(this);
-                break;
-
-            case SubsystemFunctionalState.Ready:
-                // Add initial heat when becoming ready
-                onSubsystemActivated?.Invoke(this);
-                break;
-
-            case SubsystemFunctionalState.Surge:
-                // Surge does not change initial heat baseline
-                break;
-        }
     }
 }
