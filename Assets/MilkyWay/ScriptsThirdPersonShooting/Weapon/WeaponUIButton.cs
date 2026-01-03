@@ -10,7 +10,7 @@ public class WeaponUIButton : MonoBehaviour, IPointerEnterHandler, IPointerExitH
 
     private void Update()
     {
-        bool rightHeld = Input.GetMouseButton(1);
+        bool rightHeld = Input.GetMouseButton(1) || Input.GetKey(KeyCode.Space);
 
         // --- Apply Hover Visuals Every Frame ---
         controller.SetHover(isHovering, rightHeld);
@@ -35,8 +35,7 @@ public class WeaponUIButton : MonoBehaviour, IPointerEnterHandler, IPointerExitH
     // --- FUNCTIONAL STATE CHANGE (RMB + LMB) ---
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (eventData.button == PointerEventData.InputButton.Left &&
-            Input.GetMouseButton(1))
+        if (eventData.button == PointerEventData.InputButton.Left && (Input.GetMouseButton(1) || Input.GetKey(KeyCode.Space))) 
         {
             controller.AdvanceFunctionalStateImmediate();
         }

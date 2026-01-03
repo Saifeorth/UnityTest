@@ -10,7 +10,7 @@ public class SubsystemButton : MonoBehaviour,
 
     private void Update()
     {
-        bool rightHeld = Input.GetMouseButton(1);
+        bool rightHeld = Input.GetMouseButton(1) || Input.GetKey(KeyCode.Space);
 
         // Always tell controller whether we're hovering and if RMB is held so it can show hover visuals.
         controller.SetHover(isHovering, rightHeld);
@@ -35,7 +35,7 @@ public class SubsystemButton : MonoBehaviour,
     // FUNCTIONAL STATE CHANGE (RMB + LMB) while hovering
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (eventData.button == PointerEventData.InputButton.Left && Input.GetMouseButton(1))
+        if (eventData.button == PointerEventData.InputButton.Left && (Input.GetMouseButton(1) || Input.GetKey(KeyCode.Space)))
         {
             // Immediately change functional state (overwrites any ongoing transition).
             controller.AdvanceFunctionalStateImmediate();

@@ -504,27 +504,43 @@ public class HeatManager : MonoBehaviour
         return Color.red;
     }
 
-    private float LabeledInputField(string label, float current, float min, float max, int fontSize = 16)
+    private float LabeledInputField(
+    string label,
+    float current,
+    float min,
+    float max,
+    int fontSize = 16,
+    int decimals = 3
+)
     {
-        // Create styles
-        GUIStyle labelStyle = new GUIStyle(GUI.skin.label);
-        labelStyle.fontSize = fontSize;
+        GUIStyle labelStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = fontSize
+        };
 
-        GUIStyle textFieldStyle = new GUIStyle(GUI.skin.textField);
-        textFieldStyle.fontSize = fontSize;
+        GUIStyle textFieldStyle = new GUIStyle(GUI.skin.textField)
+        {
+            fontSize = fontSize
+        };
 
         GUILayout.BeginHorizontal();
 
         GUILayout.Label(label, labelStyle, GUILayout.Width(180));
 
-        string newVal = GUILayout.TextField(current.ToString("F2"),
-                                            textFieldStyle,
-                                            GUILayout.Width(80));
+        string format = "F" + decimals;
+        string newVal = GUILayout.TextField(
+            current.ToString(format),
+            textFieldStyle,
+            GUILayout.Width(90)
+        );
 
-        float parsed;
-        if (float.TryParse(newVal, out parsed))
+        if (float.TryParse(newVal, out float parsed))
         {
-            current = Mathf.Clamp(parsed, min, max);
+            parsed = Mathf.Clamp(parsed, min, max);
+
+            // hard round to desired precision
+            float factor = Mathf.Pow(10f, decimals);
+            current = Mathf.Round(parsed * factor) / factor;
         }
 
         GUILayout.Label($"[{min} - {max}]", labelStyle, GUILayout.Width(120));
@@ -533,6 +549,37 @@ public class HeatManager : MonoBehaviour
 
         return current;
     }
+
+
+    //private float LabeledInputField(string label, float current, float min, float max, int fontSize = 16)
+    //{
+    //    // Create styles
+    //    GUIStyle labelStyle = new GUIStyle(GUI.skin.label);
+    //    labelStyle.fontSize = fontSize;
+
+    //    GUIStyle textFieldStyle = new GUIStyle(GUI.skin.textField);
+    //    textFieldStyle.fontSize = fontSize;
+
+    //    GUILayout.BeginHorizontal();
+
+    //    GUILayout.Label(label, labelStyle, GUILayout.Width(180));
+
+    //    string newVal = GUILayout.TextField(current.ToString("F2"),
+    //                                        textFieldStyle,
+    //                                        GUILayout.Width(80));
+
+    //    float parsed;
+    //    if (float.TryParse(newVal, out parsed))
+    //    {
+    //        current = Mathf.Clamp(parsed, min, max);
+    //    }
+
+    //    GUILayout.Label($"[{min} - {max}]", labelStyle, GUILayout.Width(120));
+
+    //    GUILayout.EndHorizontal();
+
+    //    return current;
+    //}
 
 
 }

@@ -79,6 +79,12 @@ public class ShipMovementThirdPerson : MonoBehaviour
     public TextMeshProUGUI gValueText;
     public List<Image> gVisualImages;
 
+    [Header("G-Force Dynamics")]
+    public float gBaseRiseRate = 1.6f;        // Slower, heavier climb
+    public float gExtraRisePerAxis = 1.2f;    // Additional axes add pressure
+    public float gMinFallRate = 0.8f;         // Gentle glide decay
+    public float gMaxFallRate = 8.0f;
+
     // ---- Derived / runtime values ----
     private Rigidbody rb;
     public bool showGUI = false;
@@ -97,6 +103,8 @@ public class ShipMovementThirdPerson : MonoBehaviour
     private bool isAccelerating = false;
     private Vector3 accelerationVector = Vector3.zero;
     private Vector3 lastVelocity = Vector3.zero;
+    private float currentGsTarget = 0f;
+    private float yawAngularVelocity = 0f;
 
     private void Awake()
     {
@@ -147,7 +155,7 @@ public class ShipMovementThirdPerson : MonoBehaviour
 
     private void ManageCursor()
     {
-        bool blockControl = Input.GetKey(KeyCode.Mouse1) || showGUI;
+        bool blockControl = Input.GetKey(KeyCode.Mouse1) || showGUI || Input.GetKey(KeyCode.Space);
 
         Cursor.visible = blockControl;
         Cursor.lockState = blockControl ? CursorLockMode.None : CursorLockMode.Locked;
@@ -170,6 +178,8 @@ public class ShipMovementThirdPerson : MonoBehaviour
             ToggleThruster(reverseThruster, false);
             ToggleThrusters(strafeLeftThrusters, false);
             ToggleThrusters(strafeRightThrusters, false);
+
+            currentGsTarget = 0f;
             return;
         }
 
@@ -181,8 +191,6 @@ public class ShipMovementThirdPerson : MonoBehaviour
         bool up = Input.GetKey(upKey);
         bool down = Input.GetKey(downKey);
 
-        // Track if we're accelerating (for G calculation)
-        isAccelerating = w || s || q || e || up || down;
 
         // Engine multiplier
         float engineMultiplier = 1f;
@@ -215,6 +223,16 @@ public class ShipMovementThirdPerson : MonoBehaviour
         ToggleThruster(reverseThruster, s);
         ToggleThrusters(strafeLeftThrusters, e);
         ToggleThrusters(strafeRightThrusters, q);
+
+        // -------- INPUT-DRIVEN G CALCULATION (NON-PHYSICAL) --------
+        int activeThrusters = 0;
+
+        if (w || s) activeThrusters++;
+        if (q || e) activeThrusters++;
+        if (up || down) activeThrusters++;
+
+        // This is now a *desired pressure*, not a direct mapping
+        currentGsTarget = activeThrusters > 0 ? maxGs : 0f;
 
         // Local-space damping
         Vector3 localVel = transform.InverseTransformDirection(rb.linearVelocity);
@@ -258,105 +276,123 @@ public class ShipMovementThirdPerson : MonoBehaviour
         }
     }
 
-    // -------------------------
-    // HandleRotation (FIXED: Simpler approach)
-    // -------------------------
-    //private void HandleRotation()
-    //{
-    //    if (showGUI ||
-    //        (thrusterSubsystem != null && (
-    //            thrusterSubsystem.isVenting ||
-    //            thrusterSubsystem.funcState == SubsystemFunctionalState.Idle ||
-    //            thrusterSubsystem.visualState == SubsystemVisualState.Disabled)))
-    //    {
-    //        ToggleThrusters(rotateLeftThrusters, false);
-    //        ToggleThrusters(rotateRightThrusters, false);
-    //        return;
-    //    }
-
-    //    float input = 0f;
-    //    if (Input.GetKey(KeyCode.A)) input -= 1f;
-    //    if (Input.GetKey(KeyCode.D)) input += 1f;
-
-    //    float turnMultiplier = 1f;
-    //    if (thrusterSubsystem != null &&
-    //        thrusterSubsystem.funcState == SubsystemFunctionalState.Surge)
-    //    {
-    //        turnMultiplier = 2f;
-    //    }
-
-    //    if (Mathf.Abs(input) > 0f)
-    //    {
-    //        // Apply torque based on input
-    //        float torque = input * rotationTorque * turnMultiplier;
-    //        rb.AddRelativeTorque(Vector3.up * torque, ForceMode.Force);
-
-    //        // FIXED: Limit angular velocity
-    //        Vector3 angularVel = rb.angularVelocity;
-    //        if (Mathf.Abs(angularVel.y) > maxAngularSpeed)
-    //        {
-    //            angularVel.y = Mathf.Sign(angularVel.y) * maxAngularSpeed;
-    //            rb.angularVelocity = angularVel;
-    //        }
-
-    //        if (heatManager != null && thrusterSubsystem != null)
-    //            heatManager.AddBurstHeat(thrusterSubsystem);
-    //    }
-
-    //    // Visuals
-    //    ToggleThrusters(rotateLeftThrusters, input < 0f);  // A key - left turn
-    //    ToggleThrusters(rotateRightThrusters, input > 0f); // D key - right turn
-    //}
-
     private void HandleRotation()
     {
-        // [Same input/subsystem checks...]
-
         if (showGUI ||
-    (thrusterSubsystem != null && (
-        thrusterSubsystem.isVenting ||
-        thrusterSubsystem.funcState == SubsystemFunctionalState.Idle ||
-        thrusterSubsystem.visualState == SubsystemVisualState.Disabled)))
+            (thrusterSubsystem != null && (
+                thrusterSubsystem.isVenting ||
+                thrusterSubsystem.funcState == SubsystemFunctionalState.Idle ||
+                thrusterSubsystem.visualState == SubsystemVisualState.Disabled)))
         {
             ToggleThrusters(rotateLeftThrusters, false);
             ToggleThrusters(rotateRightThrusters, false);
             return;
         }
 
-        float rawInput = 0f;
-        if (Input.GetKey(KeyCode.A)) rawInput -= 1f;
-        if (Input.GetKey(KeyCode.D)) rawInput += 1f;
+        // -------- INPUT --------
+        float input = 0f;
+        if (Input.GetKey(KeyCode.A)) input -= 1f;
+        if (Input.GetKey(KeyCode.D)) input += 1f;
 
-        if (Mathf.Abs(rawInput) > 0.1f)
+        float surgeMultiplier =
+            (thrusterSubsystem != null &&
+             thrusterSubsystem.funcState == SubsystemFunctionalState.Surge)
+            ? 1.5f
+            : 1f;
+
+        // -------- ANGULAR ACCELERATION --------
+        if (Mathf.Abs(input) > 0.01f)
         {
-            // Use a tiny bit of physics torque for "weight" feel
-            float turnMultiplier = (thrusterSubsystem != null &&
-                                   thrusterSubsystem.funcState == SubsystemFunctionalState.Surge) ? 2f : 1f;
-
-            // Small physics torque (just 10% of before)
-            rb.AddRelativeTorque(Vector3.up * rawInput * rotationTorque * 0.1f * turnMultiplier, ForceMode.Force);
-
-            // Main rotation with transform.Rotate for responsiveness
-            float rotationThisFrame = rawInput * rotationTorque * turnMultiplier * Time.fixedDeltaTime;
-            transform.Rotate(0f, rotationThisFrame, 0f);
-
-            // Sync immediately
-            //rb.MoveRotation(transform.rotation);
-
-            if (heatManager != null && thrusterSubsystem != null)
-                heatManager.AddBurstHeat(thrusterSubsystem);
-        }
-        else
-        {
-            // Let physics handle damping naturally
-            // But we'll still sync
-            rb.MoveRotation(transform.rotation);
+            yawAngularVelocity +=
+                input *
+                rotationTorque *
+                surgeMultiplier *
+                Time.fixedDeltaTime;
         }
 
-        // Visuals based on input, not physics
-        ToggleThrusters(rotateLeftThrusters, rawInput < -0.1f);
-        ToggleThrusters(rotateRightThrusters, rawInput > 0.1f);
+        // -------- CLAMP ROTATION SPEED --------
+        yawAngularVelocity = Mathf.Clamp(
+            yawAngularVelocity,
+            -maxAngularSpeed,
+            maxAngularSpeed
+        );
+
+        // -------- DAMPING (LINGER CONTROL) --------
+        yawAngularVelocity = Mathf.MoveTowards(
+            yawAngularVelocity,
+            0f,
+            angularDrag * Time.fixedDeltaTime
+        );
+
+        // -------- APPLY ROTATION --------
+        if (Mathf.Abs(yawAngularVelocity) > 0.0001f)
+        {
+            Quaternion delta =
+                Quaternion.Euler(0f, yawAngularVelocity * Mathf.Rad2Deg * Time.fixedDeltaTime, 0f);
+
+            rb.MoveRotation(rb.rotation * delta);
+        }
+
+        // -------- VISUALS --------
+        ToggleThrusters(rotateLeftThrusters, input < -0.1f);
+        ToggleThrusters(rotateRightThrusters, input > 0.1f);
+
+        if (Mathf.Abs(input) > 0.01f &&
+            heatManager != null &&
+            thrusterSubsystem != null)
+        {
+            heatManager.AddBurstHeat(thrusterSubsystem);
+        }
     }
+
+
+
+    //private void HandleRotation()
+    //{
+    //    // [Same input/subsystem checks...]
+
+    //    if (showGUI ||
+    //(thrusterSubsystem != null && (
+    //    thrusterSubsystem.isVenting ||
+    //    thrusterSubsystem.funcState == SubsystemFunctionalState.Idle ||
+    //    thrusterSubsystem.visualState == SubsystemVisualState.Disabled)))
+    //    {
+    //        ToggleThrusters(rotateLeftThrusters, false);
+    //        ToggleThrusters(rotateRightThrusters, false);
+    //        return;
+    //    }
+
+    //    float rawInput = 0f;
+    //    if (Input.GetKey(KeyCode.A)) rawInput -= 1f;
+    //    if (Input.GetKey(KeyCode.D)) rawInput += 1f;
+
+    //    if (Mathf.Abs(rawInput) > 0.1f)
+    //    {
+    //        // Use a tiny bit of physics torque for "weight" feel
+    //        float turnMultiplier = (thrusterSubsystem != null &&
+    //                               thrusterSubsystem.funcState == SubsystemFunctionalState.Surge) ? 2f : 1f;
+
+    //        // Main rotation with transform.Rotate for responsiveness
+    //        float rotationThisFrame = rawInput * rotationTorque * turnMultiplier * Time.fixedDeltaTime;
+    //        transform.Rotate(0f, rotationThisFrame, 0f);
+
+    //        // Sync immediately
+    //        //rb.MoveRotation(transform.rotation);
+
+    //        if (heatManager != null && thrusterSubsystem != null)
+    //            heatManager.AddBurstHeat(thrusterSubsystem);
+    //    }
+    //    else
+    //    {
+    //        // Let physics handle damping naturally
+    //        // But we'll still sync
+    //        rb.MoveRotation(transform.rotation);
+    //    }
+
+    //    // Visuals based on input, not physics
+    //    ToggleThrusters(rotateLeftThrusters, rawInput < -0.1f);
+    //    ToggleThrusters(rotateRightThrusters, rawInput > 0.1f);
+    //}
 
 
     private void LimitVelocity()
@@ -392,25 +428,105 @@ public class ShipMovementThirdPerson : MonoBehaviour
     // -------------------------
     // ComputeGs (FIXED: Based on actual acceleration/speed)
     // -------------------------
+    //private void ComputeGs()
+    //{
+    //    // Method 1: Speed-based (0-10 scale)
+    //    float speed = rb.linearVelocity.magnitude;
+
+    //    if (maxLinearSpeed <= 0f)
+    //    {
+    //        currentGs = 0f;
+    //        return;
+    //    }
+
+    //    // Normalize speed to 0-1 range, then scale to 0-10
+    //    float normalizedSpeed = Mathf.Clamp01(speed / maxLinearSpeed);
+    //    currentGs = normalizedSpeed * maxGs;
+
+    //    //Alternative: If you want Gs to reflect acceleration instead of speed:
+    //    //float accelerationMagnitude = accelerationVector.magnitude;
+    //    //currentGs = Mathf.Clamp(accelerationMagnitude / 9.81f, 0f, maxGs);
+    //}
+
     private void ComputeGs()
     {
-        // Method 1: Speed-based (0-10 scale)
-        float speed = rb.linearVelocity.magnitude;
+        // -------------------------
+        // Count active thrust axes
+        // -------------------------
+        int activeThrusters = 0;
 
-        if (maxLinearSpeed <= 0f)
+        if(!engineSubsystem.isVenting)
         {
-            currentGs = 0f;
-            return;
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.S)) activeThrusters++;
+            if (Input.GetKey(KeyCode.Q) || Input.GetKey(KeyCode.E)) activeThrusters++;
+            if (Input.GetKey(upKey) || Input.GetKey(downKey)) activeThrusters++;
         }
 
-        // Normalize speed to 0-1 range, then scale to 0-10
-        float normalizedSpeed = Mathf.Clamp01(speed / maxLinearSpeed);
-        currentGs = normalizedSpeed * maxGs;
 
-        //Alternative: If you want Gs to reflect acceleration instead of speed:
-        // float accelerationMagnitude = accelerationVector.magnitude;
-        //currentGs = Mathf.Clamp(accelerationMagnitude / 9.81f, 0f, maxGs);
+        // -------------------------
+        // G RISE (pressure build-up)
+        // -------------------------
+        float riseRate = gBaseRiseRate;
+
+        if (activeThrusters > 0)
+            riseRate += (activeThrusters - 1) * gExtraRisePerAxis;
+
+        // -------------------------
+        // G FALL (dampening-driven)
+        // -------------------------
+        float fallRate = gMinFallRate;
+
+        if (activeThrusters == 0)
+        {
+            Vector3 localVel = transform.InverseTransformDirection(rb.linearVelocity);
+
+            float totalDampening = 0f;
+            int dampAxes = 0;
+
+            if (Mathf.Abs(localVel.z) > mainStopThreshold)
+            {
+                totalDampening += (localVel.z >= 0f) ? mainDampening : reverseDampening;
+                dampAxes++;
+            }
+
+            if (Mathf.Abs(localVel.x) > strafeStopThreshold)
+            {
+                totalDampening += strafeDampening;
+                dampAxes++;
+            }
+
+            if (Mathf.Abs(localVel.y) > verticalStopThreshold)
+            {
+                totalDampening += verticalDampening;
+                dampAxes++;
+            }
+
+            if (dampAxes > 0)
+            {
+                float avgDampening = totalDampening / dampAxes;
+
+                // Map dampening strength to G fall rate
+                fallRate = Mathf.Lerp(
+                    gMinFallRate,
+                    gMaxFallRate,
+                    Mathf.Clamp01(avgDampening / 5f)
+                );
+            }
+        }
+
+        // -------------------------
+        // Apply final G movement
+        // -------------------------
+        float rate = currentGsTarget > currentGs ? riseRate : fallRate;
+
+        currentGs = Mathf.MoveTowards(
+            currentGs,
+            currentGsTarget,
+            rate * Time.fixedDeltaTime
+        );
     }
+
+
 
 
 
