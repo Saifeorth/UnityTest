@@ -684,8 +684,8 @@ private void OnGUI()
         maxLinearSpeed = 30f;
         linearDamping = 0.0f;
 
-        rotationTorque = 12.0f;
-        angularDrag = 0.1f;
+        rotationTorque = 1.0f;
+        angularDrag = 0.3f;
 
         thirdPersonZoom = 12f;
         thirdPersonPositionOffset = new Vector3(0f, 3f, -2f);

@@ -8,6 +8,7 @@ using UnityEngine.UI;
 public class WeaponSubsystem : MonoBehaviour
 {
     public Weapon weapon;
+    public WeaponManager weaponManager;
 
     [Header("Heat Data")]
     public HeatSubsystemData heatData;

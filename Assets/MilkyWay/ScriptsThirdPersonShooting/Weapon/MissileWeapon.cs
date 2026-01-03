@@ -14,39 +14,39 @@ public class MissileWeapon : Weapon
 
     public override bool Fire(Vector3 targetPosition)
     {
-        // Let base.Fire() handle:
-        // cooldown, ammo, reload, sound, nextFireTime
+        if (!weaponSubsystem.weaponManager.IsTargetLocked())
+            return false;
+
+        Transform target = weaponSubsystem.weaponManager.GetLockedTarget();
+        if (!target) return false;
+
+        return FireAtTarget(target);
+    }
+
+    private bool FireAtTarget(Transform target)
+    {
         if (!CanFireInternal())
             return false;
 
-        ApplyFireInternal();   // consume ammo + set cooldown
+        ApplyFireInternal();
 
-        // -----------------------------------------
-        // Missile-specific spawn logic
-        // -----------------------------------------
         foreach (Transform point in firePoints)
         {
-            // Spawn from pool but with no default velocity
-            Quaternion lookRot = Quaternion.LookRotation(targetPosition - point.position);
+            Quaternion lookRot = Quaternion.LookRotation(target.position - point.position);
             GameObject proj = GetPooledProjectile(point.position, lookRot);
 
             if (!proj) continue;
 
-            // Find missile behaviour component
             var zigzag = proj.GetComponent<MissileZigZag>();
             if (zigzag)
             {
                 Vector3 start = point.position;
-
-                // Bezier control point to create arc
                 Vector3 control =
                     start +
                     point.forward * arcForward +
                     point.up * Random.Range(arcUpRange.x, arcUpRange.y);
 
-                Vector3 end = targetPosition;
-
-                zigzag.InitCurve(start, control, end, projectileSpeed);
+                zigzag.InitCurve(start, control, target.position, projectileSpeed);
             }
         }
 
