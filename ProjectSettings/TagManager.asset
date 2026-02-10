@@ -16,7 +16,7 @@ TagManager:
   - Ground
   - PlayerShip
   - AIShip
-  - 
+  - Asteroid
   - 
   - 
   - 
@@ -41,6 +41,9 @@ TagManager:
   m_SortingLayers:
   - name: Default
     uniqueID: 0
+    locked: 0
+  - name: Radar
+    uniqueID: 382311881
     locked: 0
   m_RenderingLayers:
   - Default
